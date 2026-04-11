@@ -58,6 +58,7 @@ import {
   selectThreadsAcrossEnvironments,
 } from "~/store";
 import { useTerminalStateStore } from "~/terminalStateStore";
+import { getClientSettingsSnapshot } from "~/hooks/useSettings";
 import { useUiStateStore } from "~/uiStateStore";
 import { WsTransport } from "../../rpc/wsTransport";
 import { createWsRpcClient, type WsRpcClient } from "../../rpc/wsRpcClient";
@@ -479,6 +480,7 @@ function syncProjectUiFromStore() {
       logicalKey: deriveLogicalProjectKeyFromSettings(project, clientSettings),
       cwd: project.cwd,
     })),
+    getClientSettingsSnapshot().sidebarProjectsDefaultExpanded,
   );
 }
 
@@ -554,6 +556,7 @@ function applyRecoveredEventBatch(
         logicalKey: deriveLogicalProjectKeyFromSettings(project, clientSettings),
         cwd: project.cwd,
       })),
+      getClientSettingsSnapshot().sidebarProjectsDefaultExpanded,
     );
   }
 

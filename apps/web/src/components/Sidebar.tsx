@@ -929,6 +929,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
     sidebarProjectGroupingMode: settings.sidebarProjectGroupingMode,
     sidebarProjectGroupingOverrides: settings.sidebarProjectGroupingOverrides,
   }));
+  const sidebarProjectsDefaultExpanded = useSettings<boolean>(
+    (settings) => settings.sidebarProjectsDefaultExpanded,
+  );
   const { updateSettings } = useUpdateSettings();
   const router = useRouter();
   const markThreadUnread = useUiStateStore((state) => state.markThreadUnread);
@@ -1022,7 +1025,7 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
   sidebarThreadByKeyRef.current = sidebarThreadByKey;
   const projectThreads = sidebarThreads;
   const projectExpanded = useUiStateStore(
-    (state) => state.projectExpandedById[project.projectKey] ?? true,
+    (state) => state.projectExpandedById[project.projectKey] ?? sidebarProjectsDefaultExpanded,
   );
   const threadLastVisitedAts = useUiStateStore(
     useShallow((state) =>
@@ -1205,13 +1208,14 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (selectedThreadCount > 0) {
         clearSelection();
       }
-      toggleProject(project.projectKey);
+      toggleProject(project.projectKey, sidebarProjectsDefaultExpanded);
     },
     [
       clearSelection,
       dragInProgressRef,
       project.projectKey,
       selectedThreadCount,
+      sidebarProjectsDefaultExpanded,
       suppressProjectClickAfterDragRef,
       suppressProjectClickForContextMenuRef,
       toggleProject,
@@ -1225,9 +1229,9 @@ const SidebarProjectItem = memo(function SidebarProjectItem(props: SidebarProjec
       if (dragInProgressRef.current) {
         return;
       }
-      toggleProject(project.projectKey);
+      toggleProject(project.projectKey, sidebarProjectsDefaultExpanded);
     },
-    [dragInProgressRef, project.projectKey, toggleProject],
+    [dragInProgressRef, project.projectKey, sidebarProjectsDefaultExpanded, toggleProject],
   );
 
   const handleProjectButtonPointerDownCapture = useCallback(
@@ -2681,6 +2685,7 @@ export default function Sidebar() {
     sidebarProjectGroupingMode: settings.sidebarProjectGroupingMode,
     sidebarProjectGroupingOverrides: settings.sidebarProjectGroupingOverrides,
   }));
+  const sidebarProjectsDefaultExpanded = useSettings((s) => s.sidebarProjectsDefaultExpanded);
   const { updateSettings } = useUpdateSettings();
   const { handleNewThread } = useNewThreadHandler();
   const { archiveThread, deleteThread } = useThreadActions();
@@ -2957,7 +2962,7 @@ export default function Sidebar() {
           ),
           sidebarThreadSortOrder,
         );
-        const projectExpanded = projectExpandedById[project.projectKey] ?? true;
+        const projectExpanded = projectExpandedById[project.projectKey] ?? sidebarProjectsDefaultExpanded;
         const activeThreadKey = routeThreadKey ?? undefined;
         const pinnedCollapsedThread =
           !projectExpanded && activeThreadKey
@@ -2984,6 +2989,7 @@ export default function Sidebar() {
       }),
     [
       sidebarThreadSortOrder,
+      sidebarProjectsDefaultExpanded,
       expandedThreadListsByProject,
       projectExpandedById,
       routeThreadKey,
