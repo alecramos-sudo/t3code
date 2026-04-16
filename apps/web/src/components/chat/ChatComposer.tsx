@@ -93,6 +93,7 @@ import {
   PenLineIcon,
   XIcon,
 } from "lucide-react";
+import { historyAt, historyLength } from "../../promptHistory";
 import { proposedPlanTitle } from "../../proposedPlan";
 import { resolveSelectableProvider, getProviderModels } from "../../providerModels";
 import type { UnifiedSettings } from "@t3tools/contracts/settings";
@@ -668,6 +669,11 @@ export const ChatComposer = memo(
     const activeComposerMenuItemRef = useRef<ComposerCommandItem | null>(null);
     const dragDepthRef = useRef(0);
 
+    // Prompt history (shell-style up/down arrow recall)
+    // -1 means "not navigating history" (showing current draft).
+    const promptHistoryIndexRef = useRef(-1);
+    const savedDraftRef = useRef("");
+
     // ------------------------------------------------------------------
     // Derived: composer send state
     // ------------------------------------------------------------------
@@ -1234,6 +1240,9 @@ export const ChatComposer = memo(
           );
           return;
         }
+        // User typed something — exit history navigation mode
+        promptHistoryIndexRef.current = -1;
+
         promptRef.current = nextPrompt;
         setPrompt(nextPrompt);
         if (!terminalContextIdListsEqual(composerTerminalContexts, terminalContextIds)) {
@@ -1504,6 +1513,75 @@ export const ChatComposer = memo(
         void onSend();
         return true;
       }
+
+      // ----------------------------------------------------------------
+      // Shell-style prompt history: up/down arrow when menu is closed
+      // ----------------------------------------------------------------
+      const totalHistory = historyLength();
+      if (key === "ArrowUp" && totalHistory > 0) {
+        const currentPrompt = promptRef.current;
+        const isNavigating = promptHistoryIndexRef.current >= 0;
+        // Only enter history mode when the prompt is empty or already browsing
+        if (!isNavigating && currentPrompt.trim().length > 0) return false;
+
+        if (!isNavigating) {
+          // Save whatever is in the composer so we can restore it on ArrowDown
+          savedDraftRef.current = currentPrompt;
+          promptHistoryIndexRef.current = totalHistory - 1;
+        } else if (promptHistoryIndexRef.current > 0) {
+          promptHistoryIndexRef.current -= 1;
+        } else {
+          // Already at oldest entry — do nothing
+          return true;
+        }
+
+        const entry = historyAt(promptHistoryIndexRef.current);
+        if (entry !== undefined) {
+          promptRef.current = entry;
+          setPrompt(entry);
+          const nextCursor = collapseExpandedComposerCursor(entry, entry.length);
+          setComposerCursor(nextCursor);
+          setComposerTrigger(null);
+          window.requestAnimationFrame(() => {
+            composerEditorRef.current?.focusAt(nextCursor);
+          });
+        }
+        return true;
+      }
+
+      if (key === "ArrowDown" && promptHistoryIndexRef.current >= 0) {
+        const totalLen = historyLength();
+        if (promptHistoryIndexRef.current < totalLen - 1) {
+          promptHistoryIndexRef.current += 1;
+          const entry = historyAt(promptHistoryIndexRef.current);
+          if (entry !== undefined) {
+            promptRef.current = entry;
+            setPrompt(entry);
+            const nextCursor = collapseExpandedComposerCursor(entry, entry.length);
+            setComposerCursor(nextCursor);
+            setComposerTrigger(null);
+            window.requestAnimationFrame(() => {
+              composerEditorRef.current?.focusAt(nextCursor);
+            });
+          }
+        } else {
+          // Past newest history entry → restore the saved draft
+          promptHistoryIndexRef.current = -1;
+          const draft = savedDraftRef.current;
+          promptRef.current = draft;
+          setPrompt(draft);
+          const nextCursor = collapseExpandedComposerCursor(draft, draft.length);
+          setComposerCursor(nextCursor);
+          setComposerTrigger(
+            draft.length > 0 ? detectComposerTrigger(draft, draft.length) : null,
+          );
+          window.requestAnimationFrame(() => {
+            composerEditorRef.current?.focusAt(nextCursor);
+          });
+        }
+        return true;
+      }
+
       return false;
     };
 
