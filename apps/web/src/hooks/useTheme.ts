@@ -118,7 +118,7 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
     if (customTheme) {
       const isDark = customTheme.base === "dark";
       document.documentElement.classList.toggle("dark", isDark);
-      applyCustomThemeColors(customTheme.colors);
+      applyCustomThemeColors(customTheme.colors, customTheme.base);
       syncBrowserChromeTheme();
       syncDesktopTheme(isDark ? "dark" : "light");
       if (suppressTransitions) {

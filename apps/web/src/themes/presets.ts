@@ -209,24 +209,59 @@ const CSS_VAR_KEYS: ReadonlyArray<keyof CustomThemeColors> = [
   "warning",
 ];
 
+/**
+ * Parse a hex color into [r, g, b] (0–255).
+ * Supports #RGB, #RRGGBB, and #RRGGBBAA.
+ */
+function hexToRgb(hex: string): [number, number, number] {
+  const h = hex.replace("#", "");
+  if (h.length === 3) {
+    return [parseInt(h[0]! + h[0]!, 16), parseInt(h[1]! + h[1]!, 16), parseInt(h[2]! + h[2]!, 16)];
+  }
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+}
+
+/** Relative luminance (WCAG 2.x). */
+function luminance(r: number, g: number, b: number): number {
+  const [rs, gs, bs] = [r, g, b].map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  }) as [number, number, number];
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+/** Pick black or white foreground for best contrast on `bgHex`. */
+function contrastForeground(bgHex: string): string {
+  const [r, g, b] = hexToRgb(bgHex);
+  return luminance(r, g, b) > 0.4 ? "#000000" : "#ffffff";
+}
+
+/** Mix a color toward white or black to produce a muted text variant. */
+function mutedForeground(base: "light" | "dark", fg: string): string {
+  const [r, g, b] = hexToRgb(fg);
+  const factor = base === "dark" ? 0.55 : 0.5;
+  const mix = (c: number) => Math.round(c * factor + (base === "dark" ? 128 : 80) * (1 - factor));
+  const toHex = (n: number) => n.toString(16).padStart(2, "0");
+  return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
+}
+
 /** Inject a custom theme's colors as CSS variables on :root */
-export function applyCustomThemeColors(colors: CustomThemeColors): void {
+export function applyCustomThemeColors(colors: CustomThemeColors, base: "light" | "dark" = "dark"): void {
   const root = document.documentElement;
   for (const key of CSS_VAR_KEYS) {
     root.style.setProperty(`--${key}`, colors[key]);
-    // Also set card-foreground, popover-foreground, etc. to match foreground
     if (key === "card" || key === "popover") {
       root.style.setProperty(`--${key}-foreground`, colors.foreground);
     }
   }
-  root.style.setProperty("--primary-foreground", "#ffffff");
+  root.style.setProperty("--primary-foreground", contrastForeground(colors.primary));
   root.style.setProperty("--secondary-foreground", colors.foreground);
-  root.style.setProperty("--muted-foreground", colors.muted);
+  root.style.setProperty("--muted-foreground", mutedForeground(base, colors.foreground));
   root.style.setProperty("--accent-foreground", colors.foreground);
-  root.style.setProperty("--destructive-foreground", colors.destructive);
-  root.style.setProperty("--info-foreground", colors.info);
-  root.style.setProperty("--success-foreground", colors.success);
-  root.style.setProperty("--warning-foreground", colors.warning);
+  root.style.setProperty("--destructive-foreground", contrastForeground(colors.destructive));
+  root.style.setProperty("--info-foreground", contrastForeground(colors.info));
+  root.style.setProperty("--success-foreground", contrastForeground(colors.success));
+  root.style.setProperty("--warning-foreground", contrastForeground(colors.warning));
   root.style.setProperty("--app-chrome-background", colors.background);
 }
 
