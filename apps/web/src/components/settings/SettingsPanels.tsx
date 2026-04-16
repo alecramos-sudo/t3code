@@ -77,6 +77,7 @@ import {
   useServerObservability,
   useServerProviders,
 } from "../../rpc/serverState";
+import { KeybindingEditor } from "./KeybindingEditor";
 
 const THEME_OPTIONS = [
   {
@@ -1481,21 +1482,33 @@ export function GeneralSettingsPanel() {
         })}
       </SettingsSection>
 
+      <SettingsSection title="Keybindings">
+        <div className="space-y-3">
+          <KeybindingEditor />
+          <div className="flex items-center gap-2 border-t border-border/40 pt-2">
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={!keybindingsConfigPath || isOpeningKeybindings}
+              onClick={openKeybindingsFile}
+            >
+              {isOpeningKeybindings ? "Opening..." : "Open JSON file"}
+            </Button>
+            {openKeybindingsError && (
+              <span className="text-[11px] text-destructive">{openKeybindingsError}</span>
+            )}
+          </div>
+        </div>
+      </SettingsSection>
+
       <SettingsSection title="Advanced">
         <SettingsRow
-          title="Keybindings"
-          description="Open the persisted `keybindings.json` file to edit advanced bindings directly."
+          title="Keybindings file"
+          description="Edit the raw keybindings.json for advanced customization."
           status={
-            <>
-              <span className="block break-all font-mono text-[11px] text-foreground">
-                {keybindingsConfigPath ?? "Resolving keybindings path..."}
-              </span>
-              {openKeybindingsError ? (
-                <span className="mt-1 block text-destructive">{openKeybindingsError}</span>
-              ) : (
-                <span className="mt-1 block">Opens in your preferred editor.</span>
-              )}
-            </>
+            <span className="block break-all font-mono text-[11px] text-foreground">
+              {keybindingsConfigPath ?? "Resolving keybindings path..."}
+            </span>
           }
           control={
             <Button

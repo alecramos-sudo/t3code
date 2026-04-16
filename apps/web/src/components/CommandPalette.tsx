@@ -141,6 +141,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   const open = useCommandPaletteStore((store) => store.open);
   const setOpen = useCommandPaletteStore((store) => store.setOpen);
   const toggleOpen = useCommandPaletteStore((store) => store.toggleOpen);
+  const openAddProject = useCommandPaletteStore((store) => store.openAddProject);
   const keybindings = useServerKeybindings();
   const composerHandleRef = useRef<ChatComposerHandle | null>(null);
   const routeTarget = useParams({
@@ -163,16 +164,22 @@ export function CommandPalette({ children }: { children: ReactNode }) {
           terminalOpen,
         },
       });
-      if (command !== "commandPalette.toggle") {
+      if (command === "commandPalette.toggle") {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleOpen();
         return;
       }
-      event.preventDefault();
-      event.stopPropagation();
-      toggleOpen();
+      if (command === "commandPalette.addProject") {
+        event.preventDefault();
+        event.stopPropagation();
+        openAddProject();
+        return;
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [keybindings, terminalOpen, toggleOpen]);
+  }, [keybindings, openAddProject, terminalOpen, toggleOpen]);
 
   return (
     <ComposerHandleContext.Provider value={composerHandleRef}>
