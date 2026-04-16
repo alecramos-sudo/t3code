@@ -453,6 +453,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.confirmThreadDelete !== DEFAULT_UNIFIED_SETTINGS.confirmThreadDelete
         ? ["Delete confirmation"]
         : []),
+      ...(settings.sidebarProjectsDefaultExpanded !==
+      DEFAULT_UNIFIED_SETTINGS.sidebarProjectsDefaultExpanded
+        ? ["Expand projects on startup"]
+        : []),
       ...(isGitWritingModelDirty ? ["Git writing model"] : []),
       ...(areProviderSettingsDirty ? ["Providers"] : []),
     ],
@@ -465,6 +469,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.defaultThreadEnvMode,
       settings.diffWordWrap,
       settings.enableAssistantStreaming,
+      settings.sidebarProjectsDefaultExpanded,
       settings.timestampFormat,
       theme,
     ],
@@ -1000,6 +1005,34 @@ export function GeneralSettingsPanel() {
                 updateSettings({ confirmThreadDelete: Boolean(checked) })
               }
               aria-label="Confirm thread deletion"
+            />
+          }
+        />
+
+        <SettingsRow
+          title="Expand projects on startup"
+          description="Show project threads expanded in the sidebar when the app starts."
+          resetAction={
+            settings.sidebarProjectsDefaultExpanded !==
+            DEFAULT_UNIFIED_SETTINGS.sidebarProjectsDefaultExpanded ? (
+              <SettingResetButton
+                label="expand projects on startup"
+                onClick={() =>
+                  updateSettings({
+                    sidebarProjectsDefaultExpanded:
+                      DEFAULT_UNIFIED_SETTINGS.sidebarProjectsDefaultExpanded,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.sidebarProjectsDefaultExpanded}
+              onCheckedChange={(checked) =>
+                updateSettings({ sidebarProjectsDefaultExpanded: Boolean(checked) })
+              }
+              aria-label="Expand projects on startup"
             />
           }
         />
