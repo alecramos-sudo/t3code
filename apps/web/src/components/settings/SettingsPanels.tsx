@@ -77,6 +77,7 @@ import {
   useServerObservability,
   useServerProviders,
 } from "../../rpc/serverState";
+import { resolvePrimaryEnvironmentHttpUrl } from "../../environments/primary";
 
 const THEME_OPTIONS = [
   {
@@ -494,6 +495,101 @@ export function useSettingsRestore(onRestored?: () => void) {
     changedSettingLabels,
     restoreDefaults,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Project Sync — import projects between dev and production databases
+// ---------------------------------------------------------------------------
+
+interface SyncSourceProject {
+  projectId: string;
+  title: string;
+  workspaceRoot: string;
+  defaultModelSelection: { provider: string; model: string } | null;
+  scripts: unknown[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+function ProjectSyncSection() {
+  const [syncing, setSyncing] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    setResult(null);
+    try {
+      const syncUrl = resolvePrimaryEnvironmentHttpUrl("/api/orchestration/sync-source-projects");
+      const res = await fetch(syncUrl, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { projects: SyncSourceProject[] };
+      const sourceProjects = data.projects;
+
+      // Get current projects to filter duplicates
+      const snapshotUrl = resolvePrimaryEnvironmentHttpUrl("/api/orchestration/snapshot");
+      const snapshotRes = await fetch(snapshotUrl, {
+        credentials: "include",
+      });
+      const snapshot = (await snapshotRes.json()) as {
+        projects: Array<{ workspaceRoot: string }>;
+      };
+      const existingRoots = new Set(snapshot.projects.map((p) => p.workspaceRoot));
+      const newProjects = sourceProjects.filter((p) => !existingRoots.has(p.workspaceRoot));
+
+      if (newProjects.length === 0) {
+        setResult("Already in sync — no new projects found.");
+        setSyncing(false);
+        return;
+      }
+
+      // Create each missing project
+      for (const project of newProjects) {
+        const dispatchUrl = resolvePrimaryEnvironmentHttpUrl("/api/orchestration/dispatch");
+        await fetch(dispatchUrl, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            _tag: "project.create",
+            title: project.title,
+            workspaceRoot: project.workspaceRoot,
+          }),
+        });
+      }
+      setResult(`Imported ${newProjects.length} project(s).`);
+    } catch (err) {
+      setResult(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
+  return (
+    <SettingsSection title="Project Sync">
+      <SettingsRow
+        title="Sync projects"
+        description="Import sidebar projects from the other environment (dev ↔ prod)."
+        status={result ? <span className="text-[11px]">{result}</span> : undefined}
+        control={
+          <Button size="xs" variant="outline" disabled={syncing} onClick={handleSync}>
+            {syncing ? (
+              <>
+                <LoaderIcon className="mr-1 size-3 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCwIcon className="mr-1 size-3" />
+                Sync projects
+              </>
+            )}
+          </Button>
+        }
+      />
+    </SettingsSection>
+  );
 }
 
 export function GeneralSettingsPanel() {
@@ -1480,6 +1576,8 @@ export function GeneralSettingsPanel() {
           );
         })}
       </SettingsSection>
+
+      <ProjectSyncSection />
 
       <SettingsSection title="Advanced">
         <SettingsRow

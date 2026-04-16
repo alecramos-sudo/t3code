@@ -70,6 +70,7 @@ import {
 } from "./serverRuntimeState";
 import {
   orchestrationDispatchRouteLayer,
+  orchestrationProjectSyncRouteLayer,
   orchestrationSnapshotRouteLayer,
 } from "./orchestration/http";
 
@@ -234,6 +235,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   authWebSocketTokenRouteLayer,
   attachmentsRouteLayer,
   orchestrationDispatchRouteLayer,
+  orchestrationProjectSyncRouteLayer,
   orchestrationSnapshotRouteLayer,
   otlpTracesProxyRouteLayer,
   projectFaviconRouteLayer,

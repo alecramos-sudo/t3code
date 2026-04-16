@@ -91,3 +91,43 @@ export const orchestrationDispatchRouteLayer = HttpRouter.add(
     return HttpServerResponse.jsonUnsafe(result, { status: 200 });
   }).pipe(Effect.catchTag("OrchestrationDispatchCommandError", respondToOrchestrationHttpError)),
 );
+
+// ---------------------------------------------------------------------------
+// Project sync — read projects from the "other" SQLite database
+// ---------------------------------------------------------------------------
+
+function readProjectsFromOtherSource(): unknown[] {
+  const isDevMode = Boolean(process.env.DEV_SERVER_URL || process.env.devUrl);
+  const homeDir = require("os").homedir() as string;
+  const otherSubdir = isDevMode ? "userdata" : "dev";
+  const dbPath = require("path").join(homeDir, ".t3", otherSubdir, "state.sqlite") as string;
+
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Database = (require("bun:sqlite") as { Database: new (path: string, opts?: { readonly?: boolean }) => { query: (sql: string) => { all: () => unknown[] }; close: () => void } }).Database;
+    const db = new Database(dbPath, { readonly: true });
+    const rows = db.query("SELECT * FROM projects ORDER BY updatedAt DESC").all();
+    db.close();
+    return rows;
+  } catch {
+    return [];
+  }
+}
+
+export const orchestrationProjectSyncRouteLayer = HttpRouter.add(
+  "GET",
+  "/api/orchestration/sync-source-projects",
+  Effect.gen(function* () {
+    yield* authenticateOwnerSession;
+
+    try {
+      const rows = readProjectsFromOtherSource();
+      return HttpServerResponse.jsonUnsafe({ projects: rows }, { status: 200 });
+    } catch (err) {
+      return HttpServerResponse.jsonUnsafe(
+        { error: "Failed to read projects", detail: String(err) },
+        { status: 500 },
+      );
+    }
+  }).pipe(Effect.catchTag("OrchestrationDispatchCommandError", respondToOrchestrationHttpError)),
+);
