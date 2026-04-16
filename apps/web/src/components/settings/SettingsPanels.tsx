@@ -77,21 +77,7 @@ import {
   useServerObservability,
   useServerProviders,
 } from "../../rpc/serverState";
-
-const THEME_OPTIONS = [
-  {
-    value: "system",
-    label: "System",
-  },
-  {
-    value: "light",
-    label: "Light",
-  },
-  {
-    value: "dark",
-    label: "Dark",
-  },
-] as const;
+import { ThemePicker } from "./ThemePicker";
 
 const TIMESTAMP_FORMAT_LABELS = {
   locale: "System default",
@@ -415,7 +401,7 @@ function AboutVersionSection() {
 }
 
 export function useSettingsRestore(onRestored?: () => void) {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, customThemeName, setCustomTheme } = useTheme();
   const settings = useSettings();
   const { resetSettings } = useUpdateSettings();
 
@@ -431,7 +417,7 @@ export function useSettingsRestore(onRestored?: () => void) {
 
   const changedSettingLabels = useMemo(
     () => [
-      ...(theme !== "system" ? ["Theme"] : []),
+      ...(theme !== "system" || customThemeName ? ["Theme"] : []),
       ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
         ? ["Time format"]
         : []),
@@ -462,6 +448,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     ],
     [
       areProviderSettingsDirty,
+      customThemeName,
       isGitWritingModelDirty,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
@@ -485,10 +472,11 @@ export function useSettingsRestore(onRestored?: () => void) {
     );
     if (!confirmed) return;
 
+    setCustomTheme(null);
     setTheme("system");
     resetSettings();
     onRestored?.();
-  }, [changedSettingLabels, onRestored, resetSettings, setTheme]);
+  }, [changedSettingLabels, onRestored, resetSettings, setCustomTheme, setTheme]);
 
   return {
     changedSettingLabels,
@@ -497,7 +485,7 @@ export function useSettingsRestore(onRestored?: () => void) {
 }
 
 export function GeneralSettingsPanel() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, customThemeName, setCustomTheme } = useTheme();
   const settings = useSettings();
   const { updateSettings } = useUpdateSettings();
   const [openingPathByTarget, setOpeningPathByTarget] = useState({
@@ -766,33 +754,17 @@ export function GeneralSettingsPanel() {
           title="Theme"
           description="Choose how T3 Code looks across the app."
           resetAction={
-            theme !== "system" ? (
-              <SettingResetButton label="theme" onClick={() => setTheme("system")} />
+            theme !== "system" || customThemeName ? (
+              <SettingResetButton
+                label="theme"
+                onClick={() => {
+                  setCustomTheme(null);
+                  setTheme("system");
+                }}
+              />
             ) : null
           }
-          control={
-            <Select
-              value={theme}
-              onValueChange={(value) => {
-                if (value === "system" || value === "light" || value === "dark") {
-                  setTheme(value);
-                }
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-40" aria-label="Theme preference">
-                <SelectValue>
-                  {THEME_OPTIONS.find((option) => option.value === theme)?.label ?? "System"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectPopup align="end" alignItemWithTrigger={false}>
-                {THEME_OPTIONS.map((option) => (
-                  <SelectItem hideIndicator key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </Select>
-          }
+          control={<ThemePicker />}
         />
 
         <SettingsRow
