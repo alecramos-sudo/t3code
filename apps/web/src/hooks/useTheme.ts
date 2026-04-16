@@ -1,9 +1,19 @@
 import { useCallback, useEffect, useSyncExternalStore } from "react";
+import {
+  applyCustomThemeColors,
+  clearCustomThemeColors,
+  getActiveCustomThemeName,
+  setActiveCustomThemeName,
+  THEME_PRESETS,
+  loadUserThemes,
+  type CustomTheme,
+} from "../themes/presets";
 
 type Theme = "light" | "dark" | "system";
 type ThemeSnapshot = {
   theme: Theme;
   systemDark: boolean;
+  customThemeName: string | null;
 };
 
 const STORAGE_KEY = "t3code:theme";
@@ -11,6 +21,7 @@ const MEDIA_QUERY = "(prefers-color-scheme: dark)";
 const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
   theme: "system",
   systemDark: false,
+  customThemeName: null,
 };
 const THEME_COLOR_META_NAME = "theme-color";
 const DYNAMIC_THEME_COLOR_SELECTOR = `meta[name="${THEME_COLOR_META_NAME}"][data-dynamic-theme-color="true"]`;
@@ -87,11 +98,42 @@ export function syncBrowserChromeTheme() {
   ensureThemeColorMetaTag().setAttribute("content", backgroundColor);
 }
 
+function findCustomTheme(name: string): CustomTheme | undefined {
+  return (
+    THEME_PRESETS.find((t) => t.name === name) ??
+    loadUserThemes().find((t) => t.name === name)
+  );
+}
+
 function applyTheme(theme: Theme, suppressTransitions = false) {
   if (typeof document === "undefined" || typeof window === "undefined") return;
   if (suppressTransitions) {
     document.documentElement.classList.add("no-transitions");
   }
+
+  // Check for active custom theme
+  const customThemeName = getActiveCustomThemeName();
+  if (customThemeName) {
+    const customTheme = findCustomTheme(customThemeName);
+    if (customTheme) {
+      const isDark = customTheme.base === "dark";
+      document.documentElement.classList.toggle("dark", isDark);
+      applyCustomThemeColors(customTheme.colors);
+      syncBrowserChromeTheme();
+      syncDesktopTheme(isDark ? "dark" : "light");
+      if (suppressTransitions) {
+        // oxlint-disable-next-line no-unused-expressions
+        document.documentElement.offsetHeight;
+        requestAnimationFrame(() => {
+          document.documentElement.classList.remove("no-transitions");
+        });
+      }
+      return;
+    }
+  }
+
+  // Standard theme — clear any custom overrides
+  clearCustomThemeColors();
   const isDark = theme === "dark" || (theme === "system" && getSystemDark());
   document.documentElement.classList.toggle("dark", isDark);
   syncBrowserChromeTheme();
@@ -130,12 +172,18 @@ function getSnapshot(): ThemeSnapshot {
   if (!hasThemeStorage()) return DEFAULT_THEME_SNAPSHOT;
   const theme = getStored();
   const systemDark = theme === "system" ? getSystemDark() : false;
+  const customThemeName = getActiveCustomThemeName();
 
-  if (lastSnapshot && lastSnapshot.theme === theme && lastSnapshot.systemDark === systemDark) {
+  if (
+    lastSnapshot &&
+    lastSnapshot.theme === theme &&
+    lastSnapshot.systemDark === systemDark &&
+    lastSnapshot.customThemeName === customThemeName
+  ) {
     return lastSnapshot;
   }
 
-  lastSnapshot = { theme, systemDark };
+  lastSnapshot = { theme, systemDark, customThemeName };
   return lastSnapshot;
 }
 
@@ -174,21 +222,43 @@ function subscribe(listener: () => void): () => void {
 export function useTheme() {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const theme = snapshot.theme;
+  const customThemeName = snapshot.customThemeName;
 
-  const resolvedTheme: "light" | "dark" =
-    theme === "system" ? (snapshot.systemDark ? "dark" : "light") : theme;
+  const resolvedTheme: "light" | "dark" = (() => {
+    if (customThemeName) {
+      const ct = findCustomTheme(customThemeName);
+      if (ct) return ct.base;
+    }
+    return theme === "system" ? (snapshot.systemDark ? "dark" : "light") : theme;
+  })();
 
   const setTheme = useCallback((next: Theme) => {
     if (!hasThemeStorage()) return;
     localStorage.setItem(STORAGE_KEY, next);
+    // Clear custom theme when switching to a standard theme
+    setActiveCustomThemeName(null);
     applyTheme(next, true);
+    emitChange();
+  }, []);
+
+  const setCustomTheme = useCallback((name: string | null) => {
+    if (!hasThemeStorage()) return;
+    setActiveCustomThemeName(name);
+    if (name) {
+      const ct = findCustomTheme(name);
+      if (ct) {
+        // Store the base as the underlying theme
+        localStorage.setItem(STORAGE_KEY, ct.base);
+      }
+    }
+    applyTheme(getStored(), true);
     emitChange();
   }, []);
 
   // Keep DOM in sync on mount/change
   useEffect(() => {
     applyTheme(theme);
-  }, [theme]);
+  }, [theme, customThemeName]);
 
-  return { theme, setTheme, resolvedTheme } as const;
+  return { theme, setTheme, resolvedTheme, customThemeName, setCustomTheme } as const;
 }

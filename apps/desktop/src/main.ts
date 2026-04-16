@@ -2017,7 +2017,8 @@ function createWindow(): BrowserWindow {
 
   if (isDevelopment) {
     void window.loadURL(resolveDesktopDevServerUrl());
-    window.webContents.openDevTools({ mode: "detach" });
+    // DevTools available via Cmd+Option+I — not opened by default
+    // window.webContents.openDevTools({ mode: "detach" });
   } else {
     void window.loadURL(backendHttpUrl);
   }

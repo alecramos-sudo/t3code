@@ -77,21 +77,9 @@ import {
   useServerObservability,
   useServerProviders,
 } from "../../rpc/serverState";
-
-const THEME_OPTIONS = [
-  {
-    value: "system",
-    label: "System",
-  },
-  {
-    value: "light",
-    label: "Light",
-  },
-  {
-    value: "dark",
-    label: "Dark",
-  },
-] as const;
+import { resolvePrimaryEnvironmentHttpUrl } from "../../environments/primary";
+import { KeybindingEditor } from "./KeybindingEditor";
+import { ThemePicker } from "./ThemePicker";
 
 const TIMESTAMP_FORMAT_LABELS = {
   locale: "System default",
@@ -415,7 +403,7 @@ function AboutVersionSection() {
 }
 
 export function useSettingsRestore(onRestored?: () => void) {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, customThemeName, setCustomTheme } = useTheme();
   const settings = useSettings();
   const { resetSettings } = useUpdateSettings();
 
@@ -431,7 +419,7 @@ export function useSettingsRestore(onRestored?: () => void) {
 
   const changedSettingLabels = useMemo(
     () => [
-      ...(theme !== "system" ? ["Theme"] : []),
+      ...(theme !== "system" || customThemeName ? ["Theme"] : []),
       ...(settings.timestampFormat !== DEFAULT_UNIFIED_SETTINGS.timestampFormat
         ? ["Time format"]
         : []),
@@ -462,6 +450,7 @@ export function useSettingsRestore(onRestored?: () => void) {
     ],
     [
       areProviderSettingsDirty,
+      customThemeName,
       isGitWritingModelDirty,
       settings.confirmThreadArchive,
       settings.confirmThreadDelete,
@@ -485,10 +474,11 @@ export function useSettingsRestore(onRestored?: () => void) {
     );
     if (!confirmed) return;
 
+    setCustomTheme(null);
     setTheme("system");
     resetSettings();
     onRestored?.();
-  }, [changedSettingLabels, onRestored, resetSettings, setTheme]);
+  }, [changedSettingLabels, onRestored, resetSettings, setCustomTheme, setTheme]);
 
   return {
     changedSettingLabels,
@@ -496,8 +486,103 @@ export function useSettingsRestore(onRestored?: () => void) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Project Sync — import projects between dev and production databases
+// ---------------------------------------------------------------------------
+
+interface SyncSourceProject {
+  projectId: string;
+  title: string;
+  workspaceRoot: string;
+  defaultModelSelection: { provider: string; model: string } | null;
+  scripts: unknown[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+function ProjectSyncSection() {
+  const [syncing, setSyncing] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleSync = useCallback(async () => {
+    setSyncing(true);
+    setResult(null);
+    try {
+      const syncUrl = resolvePrimaryEnvironmentHttpUrl("/api/orchestration/sync-source-projects");
+      const res = await fetch(syncUrl, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { projects: SyncSourceProject[] };
+      const sourceProjects = data.projects;
+
+      // Get current projects to filter duplicates
+      const snapshotUrl = resolvePrimaryEnvironmentHttpUrl("/api/orchestration/snapshot");
+      const snapshotRes = await fetch(snapshotUrl, {
+        credentials: "include",
+      });
+      const snapshot = (await snapshotRes.json()) as {
+        projects: Array<{ workspaceRoot: string }>;
+      };
+      const existingRoots = new Set(snapshot.projects.map((p) => p.workspaceRoot));
+      const newProjects = sourceProjects.filter((p) => !existingRoots.has(p.workspaceRoot));
+
+      if (newProjects.length === 0) {
+        setResult("Already in sync — no new projects found.");
+        setSyncing(false);
+        return;
+      }
+
+      // Create each missing project
+      for (const project of newProjects) {
+        const dispatchUrl = resolvePrimaryEnvironmentHttpUrl("/api/orchestration/dispatch");
+        await fetch(dispatchUrl, {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            _tag: "project.create",
+            title: project.title,
+            workspaceRoot: project.workspaceRoot,
+          }),
+        });
+      }
+      setResult(`Imported ${newProjects.length} project(s).`);
+    } catch (err) {
+      setResult(`Sync failed: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSyncing(false);
+    }
+  }, []);
+
+  return (
+    <SettingsSection title="Project Sync">
+      <SettingsRow
+        title="Sync projects"
+        description="Import sidebar projects from the other environment (dev ↔ prod)."
+        status={result ? <span className="text-[11px]">{result}</span> : undefined}
+        control={
+          <Button size="xs" variant="outline" disabled={syncing} onClick={handleSync}>
+            {syncing ? (
+              <>
+                <LoaderIcon className="mr-1 size-3 animate-spin" />
+                Syncing...
+              </>
+            ) : (
+              <>
+                <RefreshCwIcon className="mr-1 size-3" />
+                Sync projects
+              </>
+            )}
+          </Button>
+        }
+      />
+    </SettingsSection>
+  );
+}
+
 export function GeneralSettingsPanel() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme, customThemeName, setCustomTheme } = useTheme();
   const settings = useSettings();
   const { updateSettings } = useUpdateSettings();
   const [openingPathByTarget, setOpeningPathByTarget] = useState({
@@ -766,33 +851,17 @@ export function GeneralSettingsPanel() {
           title="Theme"
           description="Choose how T3 Code looks across the app."
           resetAction={
-            theme !== "system" ? (
-              <SettingResetButton label="theme" onClick={() => setTheme("system")} />
+            theme !== "system" || customThemeName ? (
+              <SettingResetButton
+                label="theme"
+                onClick={() => {
+                  setCustomTheme(null);
+                  setTheme("system");
+                }}
+              />
             ) : null
           }
-          control={
-            <Select
-              value={theme}
-              onValueChange={(value) => {
-                if (value === "system" || value === "light" || value === "dark") {
-                  setTheme(value);
-                }
-              }}
-            >
-              <SelectTrigger className="w-full sm:w-40" aria-label="Theme preference">
-                <SelectValue>
-                  {THEME_OPTIONS.find((option) => option.value === theme)?.label ?? "System"}
-                </SelectValue>
-              </SelectTrigger>
-              <SelectPopup align="end" alignItemWithTrigger={false}>
-                {THEME_OPTIONS.map((option) => (
-                  <SelectItem hideIndicator key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectPopup>
-            </Select>
-          }
+          control={<ThemePicker />}
         />
 
         <SettingsRow
@@ -1481,21 +1550,35 @@ export function GeneralSettingsPanel() {
         })}
       </SettingsSection>
 
+      <SettingsSection title="Keybindings">
+        <div className="space-y-3">
+          <KeybindingEditor />
+          <div className="flex items-center gap-2 border-t border-border/40 pt-2">
+            <Button
+              size="xs"
+              variant="outline"
+              disabled={!keybindingsConfigPath || isOpeningKeybindings}
+              onClick={openKeybindingsFile}
+            >
+              {isOpeningKeybindings ? "Opening..." : "Open JSON file"}
+            </Button>
+            {openKeybindingsError && (
+              <span className="text-[11px] text-destructive">{openKeybindingsError}</span>
+            )}
+          </div>
+        </div>
+      </SettingsSection>
+
+      <ProjectSyncSection />
+
       <SettingsSection title="Advanced">
         <SettingsRow
-          title="Keybindings"
-          description="Open the persisted `keybindings.json` file to edit advanced bindings directly."
+          title="Keybindings file"
+          description="Edit the raw keybindings.json for advanced customization."
           status={
-            <>
-              <span className="block break-all font-mono text-[11px] text-foreground">
-                {keybindingsConfigPath ?? "Resolving keybindings path..."}
-              </span>
-              {openKeybindingsError ? (
-                <span className="mt-1 block text-destructive">{openKeybindingsError}</span>
-              ) : (
-                <span className="mt-1 block">Opens in your preferred editor.</span>
-              )}
-            </>
+            <span className="block break-all font-mono text-[11px] text-foreground">
+              {keybindingsConfigPath ?? "Resolving keybindings path..."}
+            </span>
           }
           control={
             <Button

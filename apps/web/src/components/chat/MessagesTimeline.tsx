@@ -18,6 +18,7 @@ import ChatMarkdown from "../ChatMarkdown";
 import {
   BotIcon,
   CheckIcon,
+  ChevronRightIcon,
   CircleAlertIcon,
   EyeIcon,
   GlobeIcon,
@@ -600,6 +601,9 @@ const AssistantChangedFilesSection = memo(function AssistantChangedFilesSection(
   );
 });
 
+/** Auto-collapse when the number of changed files exceeds this threshold. */
+const AUTO_COLLAPSE_FILE_THRESHOLD = 5;
+
 /** Inner component that only mounts when there are actual changed files,
  *  so the store subscription is unconditional (no hooks after early return). */
 function AssistantChangedFilesSectionInner({
@@ -621,11 +625,24 @@ function AssistantChangedFilesSectionInner({
   const setExpanded = useUiStateStore((store) => store.setThreadChangedFilesExpanded);
   const summaryStat = summarizeTurnDiffStats(checkpointFiles);
   const changedFileCountLabel = String(checkpointFiles.length);
+  const [sectionExpanded, setSectionExpanded] = useState(
+    checkpointFiles.length <= AUTO_COLLAPSE_FILE_THRESHOLD,
+  );
 
   return (
     <div className="mt-2 rounded-lg border border-border/80 bg-card/45 p-2.5">
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <p className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65">
+        <button
+          type="button"
+          className="flex items-center gap-1 text-[10px] uppercase tracking-[0.12em] text-muted-foreground/65 hover:text-muted-foreground transition-colors"
+          onClick={() => setSectionExpanded((prev) => !prev)}
+        >
+          <ChevronRightIcon
+            className={cn(
+              "size-3 transition-transform duration-150",
+              sectionExpanded && "rotate-90",
+            )}
+          />
           <span>Changed files ({changedFileCountLabel})</span>
           {hasNonZeroStat(summaryStat) && (
             <>
@@ -633,35 +650,41 @@ function AssistantChangedFilesSectionInner({
               <DiffStatLabel additions={summaryStat.additions} deletions={summaryStat.deletions} />
             </>
           )}
-        </p>
-        <div className="flex items-center gap-1.5">
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
-            data-scroll-anchor-ignore
-            onClick={() => setExpanded(routeThreadKey, turnSummary.turnId, !allDirectoriesExpanded)}
-          >
-            {allDirectoriesExpanded ? "Collapse all" : "Expand all"}
-          </Button>
-          <Button
-            type="button"
-            size="xs"
-            variant="outline"
-            onClick={() => onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)}
-          >
-            View diff
-          </Button>
-        </div>
+        </button>
+        {sectionExpanded && (
+          <div className="flex items-center gap-1.5">
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              data-scroll-anchor-ignore
+              onClick={() =>
+                setExpanded(routeThreadKey, turnSummary.turnId, !allDirectoriesExpanded)
+              }
+            >
+              {allDirectoriesExpanded ? "Collapse all" : "Expand all"}
+            </Button>
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              onClick={() => onOpenTurnDiff(turnSummary.turnId, checkpointFiles[0]?.path)}
+            >
+              View diff
+            </Button>
+          </div>
+        )}
       </div>
-      <ChangedFilesTree
-        key={`changed-files-tree:${turnSummary.turnId}`}
-        turnId={turnSummary.turnId}
-        files={checkpointFiles}
-        allDirectoriesExpanded={allDirectoriesExpanded}
-        resolvedTheme={resolvedTheme}
-        onOpenTurnDiff={onOpenTurnDiff}
-      />
+      {sectionExpanded && (
+        <ChangedFilesTree
+          key={`changed-files-tree:${turnSummary.turnId}`}
+          turnId={turnSummary.turnId}
+          files={checkpointFiles}
+          allDirectoriesExpanded={allDirectoriesExpanded}
+          resolvedTheme={resolvedTheme}
+          onOpenTurnDiff={onOpenTurnDiff}
+        />
+      )}
     </div>
   );
 }
