@@ -23,10 +23,16 @@ If a tradeoff is required, choose correctness and robustness over short-term con
 
 Long term maintainability is a core priority. If you add new functionality, first check if there is shared logic that can be extracted to a separate module. Duplicate logic across multiple files is a code smell and should be avoided. Don't be afraid to change existing code. Don't take shortcuts by just adding local logic to solve a problem.
 
+## Build Target
+
+The primary build target is the **desktop app** (`apps/desktop`). `bun build` and `bun dev:desktop` build only what's needed for it. `apps/marketing` is a separate landing site — don't include it in default builds or dev workflows.
+
 ## Package Roles
 
+- `apps/desktop`: Electron desktop app. This is the primary distribution target.
 - `apps/server`: Node.js WebSocket server. Wraps Codex app-server (JSON-RPC over stdio), serves the React web app, and manages provider sessions.
 - `apps/web`: React/Vite UI. Owns session UX, conversation/event rendering, and client-side state. Connects to the server via WebSocket.
+- `apps/marketing`: Astro landing/marketing site. Separate from the app — has its own `build:marketing` and `dev:marketing` scripts. Do not include in default builds.
 - `packages/contracts`: Shared effect/Schema schemas and TypeScript contracts for provider events, WebSocket protocol, and model/session types. Keep this package schema-only — no runtime logic.
 - `packages/shared`: Shared runtime utilities consumed by both server and web. Uses explicit subpath exports (e.g. `@t3tools/shared/git`) — no barrel index.
 
