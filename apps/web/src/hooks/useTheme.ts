@@ -100,8 +100,7 @@ export function syncBrowserChromeTheme() {
 
 function findCustomTheme(name: string): CustomTheme | undefined {
   return (
-    THEME_PRESETS.find((t) => t.name === name) ??
-    loadUserThemes().find((t) => t.name === name)
+    THEME_PRESETS.find((t) => t.name === name) ?? loadUserThemes().find((t) => t.name === name)
   );
 }
 

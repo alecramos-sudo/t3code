@@ -246,7 +246,10 @@ function mutedForeground(base: "light" | "dark", fg: string): string {
 }
 
 /** Inject a custom theme's colors as CSS variables on :root */
-export function applyCustomThemeColors(colors: CustomThemeColors, base: "light" | "dark" = "dark"): void {
+export function applyCustomThemeColors(
+  colors: CustomThemeColors,
+  base: "light" | "dark" = "dark",
+): void {
   const root = document.documentElement;
   for (const key of CSS_VAR_KEYS) {
     root.style.setProperty(`--${key}`, colors[key]);

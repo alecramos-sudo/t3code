@@ -209,11 +209,7 @@ function nestedBooleanRecordsEqual(
   return true;
 }
 
-export function syncProjects(
-  state: UiState,
-  projects: readonly SyncProjectInput[],
-  defaultExpanded = false,
-): UiState {
+export function syncProjects(state: UiState, projects: readonly SyncProjectInput[]): UiState {
   const previousProjectCwdById = new Map(currentProjectCwdById);
   const previousProjectIdByCwd = new Map(
     [...previousProjectCwdById.entries()].map(([projectId, cwd]) => [cwd, projectId] as const),
@@ -238,7 +234,7 @@ export function syncProjects(
       (previousProjectIdForCwd ? previousExpandedById[previousProjectIdForCwd] : undefined) ??
       (persistedExpandedProjectCwds.size > 0
         ? persistedExpandedProjectCwds.has(project.cwd)
-        : defaultExpanded);
+        : true);
     nextExpandedById[project.key] = expanded;
     return {
       id: project.key,
@@ -460,8 +456,8 @@ export function setThreadChangedFilesExpanded(
   };
 }
 
-export function toggleProject(state: UiState, projectId: string, defaultExpanded = false): UiState {
-  const expanded = state.projectExpandedById[projectId] ?? defaultExpanded;
+export function toggleProject(state: UiState, projectId: string): UiState {
+  const expanded = state.projectExpandedById[projectId] ?? true;
   return {
     ...state,
     projectExpandedById: {
@@ -471,12 +467,8 @@ export function toggleProject(state: UiState, projectId: string, defaultExpanded
   };
 }
 
-export function setProjectExpanded(
-  state: UiState,
-  projectId: string,
-  expanded: boolean,
-): UiState {
-  if (state.projectExpandedById[projectId] === expanded) {
+export function setProjectExpanded(state: UiState, projectId: string, expanded: boolean): UiState {
+  if ((state.projectExpandedById[projectId] ?? true) === expanded) {
     return state;
   }
   return {
@@ -532,13 +524,13 @@ export function reorderProjects(
 }
 
 interface UiStateStore extends UiState {
-  syncProjects: (projects: readonly SyncProjectInput[], defaultExpanded?: boolean) => void;
+  syncProjects: (projects: readonly SyncProjectInput[]) => void;
   syncThreads: (threads: readonly SyncThreadInput[]) => void;
   markThreadVisited: (threadId: string, visitedAt?: string) => void;
   markThreadUnread: (threadId: string, latestTurnCompletedAt: string | null | undefined) => void;
   clearThreadUi: (threadId: string) => void;
   setThreadChangedFilesExpanded: (threadId: string, turnId: string, expanded: boolean) => void;
-  toggleProject: (projectId: string, defaultExpanded?: boolean) => void;
+  toggleProject: (projectId: string) => void;
   setProjectExpanded: (projectId: string, expanded: boolean) => void;
   reorderProjects: (
     draggedProjectIds: readonly string[],
@@ -548,8 +540,7 @@ interface UiStateStore extends UiState {
 
 export const useUiStateStore = create<UiStateStore>((set) => ({
   ...readPersistedState(),
-  syncProjects: (projects, defaultExpanded) =>
-    set((state) => syncProjects(state, projects, defaultExpanded)),
+  syncProjects: (projects) => set((state) => syncProjects(state, projects)),
   syncThreads: (threads) => set((state) => syncThreads(state, threads)),
   markThreadVisited: (threadId, visitedAt) =>
     set((state) => markThreadVisited(state, threadId, visitedAt)),
@@ -558,8 +549,7 @@ export const useUiStateStore = create<UiStateStore>((set) => ({
   clearThreadUi: (threadId) => set((state) => clearThreadUi(state, threadId)),
   setThreadChangedFilesExpanded: (threadId, turnId, expanded) =>
     set((state) => setThreadChangedFilesExpanded(state, threadId, turnId, expanded)),
-  toggleProject: (projectId, defaultExpanded) =>
-    set((state) => toggleProject(state, projectId, defaultExpanded)),
+  toggleProject: (projectId) => set((state) => toggleProject(state, projectId)),
   setProjectExpanded: (projectId, expanded) =>
     set((state) => setProjectExpanded(state, projectId, expanded)),
   reorderProjects: (draggedProjectIds, targetProjectIds) =>

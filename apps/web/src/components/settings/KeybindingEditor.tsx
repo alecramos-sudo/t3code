@@ -157,24 +157,16 @@ export const KeybindingEditor = memo(function KeybindingEditor() {
   const platform = navigator.platform;
 
   // Group by unique command (skip thread jump bindings for cleanliness)
-  const visibleBindings = keybindings.filter(
-    (rule) => !rule.command.startsWith("thread.jump."),
-  );
+  const visibleBindings = keybindings.filter((rule) => !rule.command.startsWith("thread.jump."));
 
   if (visibleBindings.length === 0) {
-    return (
-      <p className="text-[11px] text-muted-foreground/60">No keybindings configured.</p>
-    );
+    return <p className="text-[11px] text-muted-foreground/60">No keybindings configured.</p>;
   }
 
   return (
     <div className="divide-y divide-border/40">
       {visibleBindings.map((rule, i) => (
-        <KeybindingRow
-          key={`${rule.command}-${i}`}
-          rule={rule}
-          platform={platform}
-        />
+        <KeybindingRow key={`${rule.command}-${i}`} rule={rule} platform={platform} />
       ))}
     </div>
   );

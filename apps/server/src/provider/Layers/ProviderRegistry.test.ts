@@ -28,16 +28,30 @@ import {
   hasCustomModelProvider,
   parseAuthStatusFromOutput,
   readCodexConfigModelProvider,
-} from "./CodexProvider";
-import { checkClaudeProviderStatus, parseClaudeAuthStatusFromOutput } from "./ClaudeProvider";
-import { haveProvidersChanged, ProviderRegistryLive } from "./ProviderRegistry";
-import { ServerConfig } from "../../config";
-import { ServerSettingsService, type ServerSettingsShape } from "../../serverSettings";
-import { ProviderRegistry } from "../Services/ProviderRegistry";
+} from "./CodexProvider.ts";
+import { checkClaudeProviderStatus, parseClaudeAuthStatusFromOutput } from "./ClaudeProvider.ts";
+import { haveProvidersChanged, ProviderRegistryLive } from "./ProviderRegistry.ts";
+import { OpenCodeProvider } from "../Services/OpenCodeProvider.ts";
+import { ServerConfig } from "../../config.ts";
+import { ServerSettingsService, type ServerSettingsShape } from "../../serverSettings.ts";
+import { ProviderRegistry } from "../Services/ProviderRegistry.ts";
 
 // ── Test helpers ────────────────────────────────────────────────────
 
 const encoder = new TextEncoder();
+const fakeOpenCodeSnapshot: ServerProvider = {
+  provider: "opencode",
+  status: "warning",
+  enabled: true,
+  installed: false,
+  auth: { status: "unknown" },
+  checkedAt: "2026-03-25T00:00:00.000Z",
+  version: null,
+  models: [],
+  slashCommands: [],
+  skills: [],
+  message: "OpenCode test stub",
+};
 
 function mockHandle(result: { stdout: string; stderr: string; code: number }) {
   return ChildProcessSpawner.makeHandle({
@@ -596,12 +610,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
               }),
             ),
           );
-          const runtimeServices = yield* Layer.build(
-            Layer.mergeAll(
-              Layer.succeed(ServerSettingsService, serverSettings),
-              providerRegistryLayer,
-            ),
-          ).pipe(Scope.provide(scope));
+          const runtimeServices = yield* Layer.build(providerRegistryLayer).pipe(
+            Scope.provide(scope),
+          );
 
           yield* Effect.gen(function* () {
             const registry = yield* ProviderRegistry;
@@ -631,6 +642,13 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
               }),
             ),
             Layer.provideMerge(
+              Layer.succeed(OpenCodeProvider, {
+                getSnapshot: Effect.succeed(fakeOpenCodeSnapshot),
+                refresh: Effect.succeed(fakeOpenCodeSnapshot),
+                streamChanges: Stream.empty,
+              }),
+            ),
+            Layer.provideMerge(
               mockCommandSpawnerLayer((command, args) => {
                 const joined = args.join(" ");
                 if (joined === "--version") {
@@ -646,12 +664,9 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
               }),
             ),
           );
-          const runtimeServices = yield* Layer.build(
-            Layer.mergeAll(
-              Layer.succeed(ServerSettingsService, serverSettings),
-              providerRegistryLayer,
-            ),
-          ).pipe(Scope.provide(scope));
+          const runtimeServices = yield* Layer.build(providerRegistryLayer).pipe(
+            Scope.provide(scope),
+          );
 
           yield* Effect.gen(function* () {
             const registry = yield* ProviderRegistry;
@@ -961,6 +976,69 @@ it.layer(Layer.mergeAll(NodeServices.layer, ServerSettingsService.layerTest()))(
             mockSpawnerLayer((args) => {
               const joined = args.join(" ");
               if (joined === "--version") return { stdout: "1.0.0\n", stderr: "", code: 0 };
+              if (joined === "auth status")
+                return {
+                  stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\n',
+                  stderr: "",
+                  code: 0,
+                };
+              throw new Error(`Unexpected args: ${joined}`);
+            }),
+          ),
+        ),
+      );
+
+      it.effect(
+        "includes Claude Opus 4.7 with xhigh as the default effort on supported versions",
+        () =>
+          Effect.gen(function* () {
+            const status = yield* checkClaudeProviderStatus();
+            const opus47 = status.models.find((model) => model.slug === "claude-opus-4-7");
+            if (!opus47) {
+              assert.fail("Expected Claude Opus 4.7 to be present for Claude Code v2.1.111.");
+            }
+            if (!opus47.capabilities) {
+              assert.fail(
+                "Expected Claude Opus 4.7 capabilities to be present for Claude Code v2.1.111.",
+              );
+            }
+            assert.deepStrictEqual(
+              opus47.capabilities.reasoningEffortLevels.find((level) => level.isDefault),
+              { value: "xhigh", label: "Extra High", isDefault: true },
+            );
+          }).pipe(
+            Effect.provide(
+              mockSpawnerLayer((args) => {
+                const joined = args.join(" ");
+                if (joined === "--version") return { stdout: "2.1.111\n", stderr: "", code: 0 };
+                if (joined === "auth status")
+                  return {
+                    stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\n',
+                    stderr: "",
+                    code: 0,
+                  };
+                throw new Error(`Unexpected args: ${joined}`);
+              }),
+            ),
+          ),
+      );
+
+      it.effect("hides Claude Opus 4.7 on older Claude Code versions", () =>
+        Effect.gen(function* () {
+          const status = yield* checkClaudeProviderStatus();
+          assert.strictEqual(
+            status.models.some((model) => model.slug === "claude-opus-4-7"),
+            false,
+          );
+          assert.strictEqual(
+            status.message,
+            "Claude Code v2.1.110 is too old for Claude Opus 4.7. Upgrade to v2.1.111 or newer to access it.",
+          );
+        }).pipe(
+          Effect.provide(
+            mockSpawnerLayer((args) => {
+              const joined = args.join(" ");
+              if (joined === "--version") return { stdout: "2.1.110\n", stderr: "", code: 0 };
               if (joined === "auth status")
                 return {
                   stdout: '{"loggedIn":true,"authMethod":"claude.ai"}\n',

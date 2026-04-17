@@ -13,7 +13,6 @@ import { Throttler } from "@tanstack/react-pacer";
 import {
   createKnownEnvironment,
   getKnownEnvironmentWsBaseUrl,
-  scopedProjectKey,
   scopedThreadKey,
   scopeProjectRef,
   scopeThreadRef,
@@ -59,10 +58,10 @@ import {
   selectThreadsAcrossEnvironments,
 } from "~/store";
 import { useTerminalStateStore } from "~/terminalStateStore";
-import { getClientSettingsSnapshot } from "~/hooks/useSettings";
 import { useUiStateStore } from "~/uiStateStore";
 import { WsTransport } from "../../rpc/wsTransport";
 import { createWsRpcClient, type WsRpcClient } from "../../rpc/wsRpcClient";
+import { derivePhysicalProjectKey } from "../../logicalProject";
 
 type EnvironmentServiceState = {
   readonly queryClient: QueryClient;
@@ -471,10 +470,9 @@ function syncProjectUiFromStore() {
   const projects = selectProjectsAcrossEnvironments(useStore.getState());
   useUiStateStore.getState().syncProjects(
     projects.map((project) => ({
-      key: scopedProjectKey(scopeProjectRef(project.environmentId, project.id)),
+      key: derivePhysicalProjectKey(project),
       cwd: project.cwd,
     })),
-    getClientSettingsSnapshot().sidebarProjectsDefaultExpanded,
   );
 }
 
@@ -545,10 +543,9 @@ function applyRecoveredEventBatch(
     const projects = selectProjectsAcrossEnvironments(useStore.getState());
     useUiStateStore.getState().syncProjects(
       projects.map((project) => ({
-        key: scopedProjectKey(scopeProjectRef(project.environmentId, project.id)),
+        key: derivePhysicalProjectKey(project),
         cwd: project.cwd,
       })),
-      getClientSettingsSnapshot().sidebarProjectsDefaultExpanded,
     );
   }
 
@@ -574,6 +571,11 @@ function applyRecoveredEventBatch(
     useUiStateStore
       .getState()
       .clearThreadUi(scopedThreadKey(scopeThreadRef(environmentId, threadId)));
+  }
+  for (const event of events) {
+    if (event.type === "project.deleted") {
+      draftStore.clearProjectDraftThreadId(scopeProjectRef(environmentId, event.payload.projectId));
+    }
   }
   for (const threadId of batchEffects.removeTerminalStateThreadIds) {
     useTerminalStateStore.getState().removeTerminalState(scopeThreadRef(environmentId, threadId));

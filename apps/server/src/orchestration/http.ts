@@ -104,7 +104,14 @@ function readProjectsFromOtherSource(): unknown[] {
 
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Database = (require("bun:sqlite") as { Database: new (path: string, opts?: { readonly?: boolean }) => { query: (sql: string) => { all: () => unknown[] }; close: () => void } }).Database;
+    const Database = (
+      require("bun:sqlite") as {
+        Database: new (
+          path: string,
+          opts?: { readonly?: boolean },
+        ) => { query: (sql: string) => { all: () => unknown[] }; close: () => void };
+      }
+    ).Database;
     const db = new Database(dbPath, { readonly: true });
     const rows = db.query("SELECT * FROM projects ORDER BY updatedAt DESC").all();
     db.close();

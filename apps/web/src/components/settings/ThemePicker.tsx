@@ -31,9 +31,7 @@ function ThemeCard({
           : "border-border/60 hover:border-border hover:bg-muted/30",
       )}
     >
-      {isActive && (
-        <CheckIcon className="absolute top-1.5 right-1.5 size-3 text-primary" />
-      )}
+      {isActive && <CheckIcon className="absolute top-1.5 right-1.5 size-3 text-primary" />}
       {/* Color swatches */}
       <div className="flex gap-0.5">
         <div
@@ -51,11 +49,7 @@ function ThemeCard({
           style={{ backgroundColor: c.accent }}
           title="accent"
         />
-        <div
-          className="h-5 flex-1 rounded-sm"
-          style={{ backgroundColor: c.card }}
-          title="card"
-        />
+        <div className="h-5 flex-1 rounded-sm" style={{ backgroundColor: c.card }} title="card" />
         <div
           className="h-5 flex-1 rounded-sm"
           style={{ backgroundColor: c.destructive }}
@@ -90,40 +84,17 @@ function BuiltInThemeCard({
           : "border-border/60 hover:border-border hover:bg-muted/30",
       )}
     >
-      {isActive && (
-        <CheckIcon className="absolute top-1.5 right-1.5 size-3 text-primary" />
-      )}
+      {isActive && <CheckIcon className="absolute top-1.5 right-1.5 size-3 text-primary" />}
       <div className="flex gap-0.5">
+        <div className={cn("h-5 flex-1 rounded-sm", isLight ? "bg-white" : "bg-neutral-900")} />
+        <div className={cn("h-5 flex-1 rounded-sm", isLight ? "bg-blue-500" : "bg-blue-400")} />
         <div
-          className={cn(
-            "h-5 flex-1 rounded-sm",
-            isLight ? "bg-white" : "bg-neutral-900",
-          )}
+          className={cn("h-5 flex-1 rounded-sm", isLight ? "bg-neutral-100" : "bg-neutral-800")}
         />
         <div
-          className={cn(
-            "h-5 flex-1 rounded-sm",
-            isLight ? "bg-blue-500" : "bg-blue-400",
-          )}
+          className={cn("h-5 flex-1 rounded-sm", isLight ? "bg-neutral-200" : "bg-neutral-700")}
         />
-        <div
-          className={cn(
-            "h-5 flex-1 rounded-sm",
-            isLight ? "bg-neutral-100" : "bg-neutral-800",
-          )}
-        />
-        <div
-          className={cn(
-            "h-5 flex-1 rounded-sm",
-            isLight ? "bg-neutral-200" : "bg-neutral-700",
-          )}
-        />
-        <div
-          className={cn(
-            "h-5 flex-1 rounded-sm",
-            isLight ? "bg-red-500" : "bg-red-400",
-          )}
-        />
+        <div className={cn("h-5 flex-1 rounded-sm", isLight ? "bg-red-500" : "bg-red-400")} />
       </div>
       <span className="text-[10px] font-medium text-foreground/80">{label}</span>
     </button>
