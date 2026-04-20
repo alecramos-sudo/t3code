@@ -258,18 +258,26 @@ describe("uiStateStore pure functions", () => {
     const physicalRemote = "env-remote:/repo/project";
     const logicalKey = "repo-canonical-key";
 
-    const initial = syncProjects(makeUiState(), [
-      { key: physicalLocal, logicalKey, cwd: "/repo/project" },
-      { key: physicalRemote, logicalKey, cwd: "/repo/project" },
-    ]);
+    const initial = syncProjects(
+      makeUiState(),
+      [
+        { key: physicalLocal, logicalKey, cwd: "/repo/project" },
+        { key: physicalRemote, logicalKey, cwd: "/repo/project" },
+      ],
+      true,
+    );
 
     expect(initial.projectExpandedById).toEqual({ [logicalKey]: true });
 
     const afterCollapse = { ...initial, projectExpandedById: { [logicalKey]: false } };
-    const next = syncProjects(afterCollapse, [
-      { key: physicalLocal, logicalKey, cwd: "/repo/project" },
-      { key: physicalRemote, logicalKey, cwd: "/repo/project" },
-    ]);
+    const next = syncProjects(
+      afterCollapse,
+      [
+        { key: physicalLocal, logicalKey, cwd: "/repo/project" },
+        { key: physicalRemote, logicalKey, cwd: "/repo/project" },
+      ],
+      true,
+    );
 
     expect(next.projectExpandedById[logicalKey]).toBe(false);
   });
@@ -282,9 +290,11 @@ describe("uiStateStore pure functions", () => {
     const previousLogicalKey = physicalKey;
     const nextLogicalKey = "repo-canonical-key";
 
-    const initial = syncProjects(makeUiState(), [
-      { key: physicalKey, logicalKey: previousLogicalKey, cwd: "/repo/project" },
-    ]);
+    const initial = syncProjects(
+      makeUiState(),
+      [{ key: physicalKey, logicalKey: previousLogicalKey, cwd: "/repo/project" }],
+      true,
+    );
 
     expect(initial.projectExpandedById[previousLogicalKey]).toBe(true);
 
@@ -292,9 +302,11 @@ describe("uiStateStore pure functions", () => {
       ...initial,
       projectExpandedById: { [previousLogicalKey]: false },
     };
-    const next = syncProjects(afterCollapse, [
-      { key: physicalKey, logicalKey: nextLogicalKey, cwd: "/repo/project" },
-    ]);
+    const next = syncProjects(
+      afterCollapse,
+      [{ key: physicalKey, logicalKey: nextLogicalKey, cwd: "/repo/project" }],
+      true,
+    );
 
     expect(next.projectExpandedById[nextLogicalKey]).toBe(false);
   });
@@ -472,7 +484,7 @@ describe("uiStateStore persistence round-trip", () => {
     const projectB = { key: "kB", logicalKey: "kB", cwd: "/projB" };
     const projectC = { key: "kC", logicalKey: "kC", cwd: "/projC" };
 
-    let state = syncProjects(makeUiState(), [projectA, projectB]);
+    let state = syncProjects(makeUiState(), [projectA, projectB], true);
     state = setProjectExpanded(state, projectB.key, false);
     persistState(state);
 
@@ -480,7 +492,7 @@ describe("uiStateStore persistence round-trip", () => {
       localStorageStub.getItem(PERSISTED_STATE_KEY) ?? "{}",
     ) as PersistedUiState;
     hydratePersistedProjectState(persisted);
-    const rehydrated = syncProjects(makeUiState(), [projectA, projectB, projectC]);
+    const rehydrated = syncProjects(makeUiState(), [projectA, projectB, projectC], true);
 
     expect(rehydrated.projectExpandedById).toEqual({
       [projectA.key]: true,
