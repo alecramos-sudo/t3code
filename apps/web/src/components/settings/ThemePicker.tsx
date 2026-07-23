@@ -1,4 +1,4 @@
-import { memo, useCallback, useRef, useState } from "react";
+import { memo, type ChangeEvent, useCallback, useRef, useState } from "react";
 import { useTheme } from "../../hooks/useTheme";
 import {
   THEME_PRESETS,
@@ -123,12 +123,12 @@ export const ThemePicker = memo(function ThemePicker() {
   }, []);
 
   const handleFileChange = useCallback(
-    (event: React.ChangeEvent<HTMLInputElement>) => {
+    (event: ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0];
       if (!file) return;
 
       const reader = new FileReader();
-      reader.onload = () => {
+      reader.addEventListener("load", () => {
         try {
           const imported = JSON.parse(reader.result as string) as CustomTheme;
           if (!imported.name || !imported.base || !imported.colors) {
@@ -141,7 +141,7 @@ export const ThemePicker = memo(function ThemePicker() {
         } catch (err) {
           console.warn("Failed to import theme", err);
         }
-      };
+      });
       reader.readAsText(file);
       event.target.value = "";
     },

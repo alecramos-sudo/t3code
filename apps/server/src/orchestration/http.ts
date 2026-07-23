@@ -1,140 +1,93 @@
 import {
-  ClientOrchestrationCommand,
-  OrchestrationDispatchCommandError,
-  OrchestrationGetSnapshotError,
-  type OrchestrationReadModel,
+  AuthOrchestrationOperateScope,
+  AuthOrchestrationReadScope,
+  EnvironmentHttpApi,
 } from "@t3tools/contracts";
-import { Effect } from "effect";
-import { HttpRouter, HttpServerRequest, HttpServerResponse } from "effect/unstable/http";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder";
 
-import { ServerAuth } from "../auth/Services/ServerAuth.ts";
 import { normalizeDispatchCommand } from "./Normalizer.ts";
+import {
+  annotateEnvironmentRequest,
+  failEnvironmentInternal,
+  failEnvironmentInvalidRequest,
+  failEnvironmentNotFound,
+  requireEnvironmentScope,
+} from "../auth/http.ts";
 import { OrchestrationEngineService } from "./Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "./Services/ProjectionSnapshotQuery.ts";
 
-const respondToOrchestrationHttpError = (
-  error: OrchestrationDispatchCommandError | OrchestrationGetSnapshotError,
-) =>
-  Effect.gen(function* () {
-    if (error._tag === "OrchestrationGetSnapshotError") {
-      yield* Effect.logError("orchestration http route failed", {
-        message: error.message,
-        cause: error.cause,
-      });
-      return HttpServerResponse.jsonUnsafe({ error: error.message }, { status: 500 });
-    }
-
-    return HttpServerResponse.jsonUnsafe({ error: error.message }, { status: 400 });
-  });
-
-const authenticateOwnerSession = Effect.gen(function* () {
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  const serverAuth = yield* ServerAuth;
-  const session = yield* serverAuth.authenticateHttpRequest(request);
-  if (session.role !== "owner") {
-    return yield* new OrchestrationDispatchCommandError({
-      message: "Only owner sessions can manage projects.",
-    });
-  }
-  return session;
-});
-
-export const orchestrationSnapshotRouteLayer = HttpRouter.add(
-  "GET",
-  "/api/orchestration/snapshot",
-  Effect.gen(function* () {
-    yield* authenticateOwnerSession;
+export const orchestrationHttpApiLayer = HttpApiBuilder.group(
+  EnvironmentHttpApi,
+  "orchestration",
+  Effect.fnUntraced(function* (handlers) {
     const projectionSnapshotQuery = yield* ProjectionSnapshotQuery;
-    const snapshot = yield* projectionSnapshotQuery.getSnapshot().pipe(
-      Effect.mapError(
-        (cause) =>
-          new OrchestrationGetSnapshotError({
-            message: "Failed to load orchestration snapshot.",
-            cause,
-          }),
-      ),
-    );
-    return HttpServerResponse.jsonUnsafe(snapshot satisfies OrchestrationReadModel, {
-      status: 200,
-    });
-  }).pipe(
-    Effect.catchTag("OrchestrationDispatchCommandError", respondToOrchestrationHttpError),
-    Effect.catchTag("OrchestrationGetSnapshotError", respondToOrchestrationHttpError),
-  ),
-);
-
-export const orchestrationDispatchRouteLayer = HttpRouter.add(
-  "POST",
-  "/api/orchestration/dispatch",
-  Effect.gen(function* () {
-    yield* authenticateOwnerSession;
     const orchestrationEngine = yield* OrchestrationEngineService;
-    const command = yield* HttpServerRequest.schemaBodyJson(ClientOrchestrationCommand).pipe(
-      Effect.mapError(
-        (cause) =>
-          new OrchestrationDispatchCommandError({
-            message: "Invalid orchestration command payload.",
-            cause,
-          }),
-      ),
-    );
-    const normalizedCommand = yield* normalizeDispatchCommand(command);
-    const result = yield* orchestrationEngine.dispatch(normalizedCommand).pipe(
-      Effect.mapError(
-        (cause) =>
-          new OrchestrationDispatchCommandError({
-            message: "Failed to dispatch orchestration command.",
-            cause,
-          }),
-      ),
-    );
-    return HttpServerResponse.jsonUnsafe(result, { status: 200 });
-  }).pipe(Effect.catchTag("OrchestrationDispatchCommandError", respondToOrchestrationHttpError)),
-);
 
-// ---------------------------------------------------------------------------
-// Project sync — read projects from the "other" SQLite database
-// ---------------------------------------------------------------------------
-
-function readProjectsFromOtherSource(): unknown[] {
-  const isDevMode = Boolean(process.env.DEV_SERVER_URL || process.env.devUrl);
-  const homeDir = require("os").homedir() as string;
-  const otherSubdir = isDevMode ? "userdata" : "dev";
-  const dbPath = require("path").join(homeDir, ".t3", otherSubdir, "state.sqlite") as string;
-
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const Database = (
-      require("bun:sqlite") as {
-        Database: new (
-          path: string,
-          opts?: { readonly?: boolean },
-        ) => { query: (sql: string) => { all: () => unknown[] }; close: () => void };
-      }
-    ).Database;
-    const db = new Database(dbPath, { readonly: true });
-    const rows = db.query("SELECT * FROM projects ORDER BY updatedAt DESC").all();
-    db.close();
-    return rows;
-  } catch {
-    return [];
-  }
-}
-
-export const orchestrationProjectSyncRouteLayer = HttpRouter.add(
-  "GET",
-  "/api/orchestration/sync-source-projects",
-  Effect.gen(function* () {
-    yield* authenticateOwnerSession;
-
-    try {
-      const rows = readProjectsFromOtherSource();
-      return HttpServerResponse.jsonUnsafe({ projects: rows }, { status: 200 });
-    } catch (err) {
-      return HttpServerResponse.jsonUnsafe(
-        { error: "Failed to read projects", detail: String(err) },
-        { status: 500 },
+    return handlers
+      .handle(
+        "snapshot",
+        Effect.fn("environment.orchestration.snapshot")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          return yield* projectionSnapshotQuery
+            .getSnapshot()
+            .pipe(
+              Effect.catch((cause) =>
+                failEnvironmentInternal("orchestration_snapshot_failed", cause),
+              ),
+            );
+        }),
+      )
+      .handle(
+        "shellSnapshot",
+        Effect.fn("environment.orchestration.shellSnapshot")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          return yield* projectionSnapshotQuery
+            .getShellSnapshot()
+            .pipe(
+              Effect.catch((cause) =>
+                failEnvironmentInternal("orchestration_snapshot_failed", cause),
+              ),
+            );
+        }),
+      )
+      .handle(
+        "threadSnapshot",
+        Effect.fn("environment.orchestration.threadSnapshot")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationReadScope);
+          const snapshot = yield* projectionSnapshotQuery
+            .getThreadDetailSnapshot(args.params.threadId)
+            .pipe(
+              Effect.catch((cause) =>
+                failEnvironmentInternal("orchestration_thread_snapshot_failed", cause),
+              ),
+            );
+          if (Option.isNone(snapshot)) {
+            return yield* failEnvironmentNotFound("thread_not_found");
+          }
+          return snapshot.value;
+        }),
+      )
+      .handle(
+        "dispatch",
+        Effect.fn("environment.orchestration.dispatch")(function* (args) {
+          yield* annotateEnvironmentRequest(args.endpoint.name);
+          yield* requireEnvironmentScope(AuthOrchestrationOperateScope);
+          const normalizedCommand = yield* normalizeDispatchCommand(args.payload).pipe(
+            Effect.catch(() => failEnvironmentInvalidRequest("invalid_command")),
+          );
+          return yield* orchestrationEngine
+            .dispatch(normalizedCommand)
+            .pipe(
+              Effect.catch((cause) =>
+                failEnvironmentInternal("orchestration_dispatch_failed", cause),
+              ),
+            );
+        }),
       );
-    }
-  }).pipe(Effect.catchTag("OrchestrationDispatchCommandError", respondToOrchestrationHttpError)),
+  }),
 );

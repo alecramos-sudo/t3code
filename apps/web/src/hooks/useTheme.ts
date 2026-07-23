@@ -1,20 +1,26 @@
+import type { DesktopBridge } from "@t3tools/contracts";
+import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
+import * as Schema from "effect/Schema";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import {
   applyCustomThemeColors,
   clearCustomThemeColors,
   getActiveCustomThemeName,
+  loadUserThemes,
   setActiveCustomThemeName,
   THEME_PRESETS,
-  loadUserThemes,
   type CustomTheme,
 } from "../themes/presets";
 
-type Theme = "light" | "dark" | "system";
+const ThemePreference = Schema.Literals(["light", "dark", "system"]);
+type Theme = typeof ThemePreference.Type;
 type ThemeSnapshot = {
   theme: Theme;
   systemDark: boolean;
   customThemeName: string | null;
 };
+
+type DesktopThemeBridge = Pick<DesktopBridge, "setTheme">;
 
 const STORAGE_KEY = "t3code:theme";
 const MEDIA_QUERY = "(prefers-color-scheme: dark)";
@@ -26,27 +32,114 @@ const DEFAULT_THEME_SNAPSHOT: ThemeSnapshot = {
 const THEME_COLOR_META_NAME = "theme-color";
 const DYNAMIC_THEME_COLOR_SELECTOR = `meta[name="${THEME_COLOR_META_NAME}"][data-dynamic-theme-color="true"]`;
 
+export class ThemeStorageError extends Schema.TaggedErrorClass<ThemeStorageError>()(
+  "ThemeStorageError",
+  {
+    operation: Schema.Literals(["read", "write"]),
+    storageKey: Schema.String,
+    theme: Schema.optional(ThemePreference),
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to ${this.operation} theme preference for ${this.storageKey}.`;
+  }
+}
+
+export const isThemeStorageError = Schema.is(ThemeStorageError);
+
+export class DesktopThemeSyncError extends Schema.TaggedErrorClass<DesktopThemeSyncError>()(
+  "DesktopThemeSyncError",
+  {
+    theme: ThemePreference,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Failed to sync the ${this.theme} theme to the desktop shell.`;
+  }
+}
+
+export const isDesktopThemeSyncError = Schema.is(DesktopThemeSyncError);
+
 let listeners: Array<() => void> = [];
 let lastSnapshot: ThemeSnapshot | null = null;
 let lastDesktopTheme: Theme | null = null;
+let lastAppliedTheme: ThemeSnapshot | null = null;
+let themeStorageReadFailure: ThemeStorageError | null = null;
 
 function emitChange() {
   for (const listener of listeners) listener();
 }
 
-function hasThemeStorage() {
-  return typeof window !== "undefined" && typeof localStorage !== "undefined";
+function getSystemDark() {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(MEDIA_QUERY).matches
+  );
 }
 
-function getSystemDark() {
-  return typeof window !== "undefined" && window.matchMedia(MEDIA_QUERY).matches;
+export function readThemePreference(): Theme {
+  if (typeof window === "undefined") return DEFAULT_THEME_SNAPSHOT.theme;
+  let raw: string | null;
+  try {
+    raw = window.localStorage.getItem(STORAGE_KEY);
+  } catch (cause) {
+    throw new ThemeStorageError({
+      operation: "read",
+      storageKey: STORAGE_KEY,
+      cause,
+    });
+  }
+  if (raw === "light" || raw === "dark" || raw === "system") return raw;
+  return DEFAULT_THEME_SNAPSHOT.theme;
+}
+
+export function writeThemePreference(theme: Theme): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, theme);
+    themeStorageReadFailure = null;
+  } catch (cause) {
+    throw new ThemeStorageError({
+      operation: "write",
+      storageKey: STORAGE_KEY,
+      theme,
+      cause,
+    });
+  }
 }
 
 function getStored(): Theme {
-  if (!hasThemeStorage()) return DEFAULT_THEME_SNAPSHOT.theme;
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === "light" || raw === "dark" || raw === "system") return raw;
-  return DEFAULT_THEME_SNAPSHOT.theme;
+  if (themeStorageReadFailure !== null) {
+    return DEFAULT_THEME_SNAPSHOT.theme;
+  }
+  try {
+    return readThemePreference();
+  } catch (cause) {
+    const error = isThemeStorageError(cause)
+      ? cause
+      : new ThemeStorageError({
+          operation: "read",
+          storageKey: STORAGE_KEY,
+          cause,
+        });
+    themeStorageReadFailure = error;
+    console.error(error.message, {
+      operation: error.operation,
+      storageKey: error.storageKey,
+      ...safeErrorLogAttributes(error),
+    });
+    return DEFAULT_THEME_SNAPSHOT.theme;
+  }
+}
+
+function findCustomTheme(name: string): CustomTheme | undefined {
+  return (
+    THEME_PRESETS.find((theme) => theme.name === name) ??
+    loadUserThemes().find((theme) => theme.name === name)
+  );
 }
 
 function ensureThemeColorMetaTag(): HTMLMetaElement {
@@ -98,45 +191,42 @@ export function syncBrowserChromeTheme() {
   ensureThemeColorMetaTag().setAttribute("content", backgroundColor);
 }
 
-function findCustomTheme(name: string): CustomTheme | undefined {
-  return (
-    THEME_PRESETS.find((t) => t.name === name) ?? loadUserThemes().find((t) => t.name === name)
-  );
-}
-
 function applyTheme(theme: Theme, suppressTransitions = false) {
   if (typeof document === "undefined" || typeof window === "undefined") return;
+  const systemDark = theme === "system" ? getSystemDark() : false;
+  const customThemeName = getActiveCustomThemeName();
+  if (
+    lastAppliedTheme?.theme === theme &&
+    lastAppliedTheme.systemDark === systemDark &&
+    lastAppliedTheme.customThemeName === customThemeName
+  ) {
+    const customTheme = customThemeName ? findCustomTheme(customThemeName) : undefined;
+    syncDesktopTheme(customTheme?.base ?? theme);
+    return;
+  }
+
   if (suppressTransitions) {
     document.documentElement.classList.add("no-transitions");
   }
-
-  // Check for active custom theme
-  const customThemeName = getActiveCustomThemeName();
-  if (customThemeName) {
-    const customTheme = findCustomTheme(customThemeName);
-    if (customTheme) {
-      const isDark = customTheme.base === "dark";
-      document.documentElement.classList.toggle("dark", isDark);
-      applyCustomThemeColors(customTheme.colors, customTheme.base);
-      syncBrowserChromeTheme();
-      syncDesktopTheme(isDark ? "dark" : "light");
-      if (suppressTransitions) {
-        // oxlint-disable-next-line no-unused-expressions
-        document.documentElement.offsetHeight;
-        requestAnimationFrame(() => {
-          document.documentElement.classList.remove("no-transitions");
-        });
-      }
-      return;
+  const customTheme = customThemeName ? findCustomTheme(customThemeName) : undefined;
+  if (customTheme) {
+    const isDark = customTheme.base === "dark";
+    document.documentElement.classList.toggle("dark", isDark);
+    applyCustomThemeColors(customTheme.colors);
+    lastAppliedTheme = { theme, systemDark, customThemeName };
+    syncBrowserChromeTheme();
+    syncDesktopTheme(customTheme.base);
+  } else {
+    if (customThemeName) {
+      setActiveCustomThemeName(null);
     }
+    clearCustomThemeColors();
+    const isDark = theme === "dark" || (theme === "system" && systemDark);
+    document.documentElement.classList.toggle("dark", isDark);
+    lastAppliedTheme = { theme, systemDark, customThemeName: null };
+    syncBrowserChromeTheme();
+    syncDesktopTheme(theme);
   }
-
-  // Standard theme — clear any custom overrides
-  clearCustomThemeColors();
-  const isDark = theme === "dark" || (theme === "system" && getSystemDark());
-  document.documentElement.classList.toggle("dark", isDark);
-  syncBrowserChromeTheme();
-  syncDesktopTheme(theme);
   if (suppressTransitions) {
     // Force a reflow so the no-transitions class takes effect before removal
     // oxlint-disable-next-line no-unused-expressions
@@ -147,15 +237,33 @@ function applyTheme(theme: Theme, suppressTransitions = false) {
   }
 }
 
-function syncDesktopTheme(theme: Theme) {
+export async function syncDesktopThemePreference(
+  bridge: DesktopThemeBridge,
+  theme: Theme,
+): Promise<void> {
+  try {
+    await bridge.setTheme(theme);
+  } catch (cause) {
+    throw new DesktopThemeSyncError({ theme, cause });
+  }
+}
+
+export function syncDesktopTheme(theme: Theme) {
   if (typeof window === "undefined") return;
   const bridge = window.desktopBridge;
-  if (!bridge || lastDesktopTheme === theme) {
+  if (!bridge || typeof bridge.setTheme !== "function" || lastDesktopTheme === theme) {
     return;
   }
 
   lastDesktopTheme = theme;
-  void bridge.setTheme(theme).catch(() => {
+  void syncDesktopThemePreference(bridge, theme).catch((cause: unknown) => {
+    const error = isDesktopThemeSyncError(cause)
+      ? cause
+      : new DesktopThemeSyncError({ theme, cause });
+    console.error(error.message, {
+      theme: error.theme,
+      ...safeErrorLogAttributes(error),
+    });
     if (lastDesktopTheme === theme) {
       lastDesktopTheme = null;
     }
@@ -163,12 +271,12 @@ function syncDesktopTheme(theme: Theme) {
 }
 
 // Apply immediately on module load to prevent flash
-if (typeof document !== "undefined" && hasThemeStorage()) {
+if (typeof document !== "undefined" && typeof window !== "undefined") {
   applyTheme(getStored());
 }
 
 function getSnapshot(): ThemeSnapshot {
-  if (!hasThemeStorage()) return DEFAULT_THEME_SNAPSHOT;
+  if (typeof window === "undefined") return DEFAULT_THEME_SNAPSHOT;
   const theme = getStored();
   const systemDark = theme === "system" ? getSystemDark() : false;
   const customThemeName = getActiveCustomThemeName();
@@ -195,16 +303,17 @@ function subscribe(listener: () => void): () => void {
   listeners.push(listener);
 
   // Listen for system preference changes
-  const mq = window.matchMedia(MEDIA_QUERY);
+  const mq = typeof window.matchMedia === "function" ? window.matchMedia(MEDIA_QUERY) : null;
   const handleChange = () => {
     if (getStored() === "system") applyTheme("system", true);
     emitChange();
   };
-  mq.addEventListener("change", handleChange);
+  mq?.addEventListener("change", handleChange);
 
   // Listen for storage changes from other tabs
   const handleStorage = (e: StorageEvent) => {
-    if (e.key === STORAGE_KEY) {
+    if (e.key === STORAGE_KEY || e.key === "t3code:custom-theme-name") {
+      themeStorageReadFailure = null;
       applyTheme(getStored(), true);
       emitChange();
     }
@@ -213,7 +322,7 @@ function subscribe(listener: () => void): () => void {
 
   return () => {
     listeners = listeners.filter((l) => l !== listener);
-    mq.removeEventListener("change", handleChange);
+    mq?.removeEventListener("change", handleChange);
     window.removeEventListener("storage", handleStorage);
   };
 }
@@ -225,31 +334,63 @@ export function useTheme() {
 
   const resolvedTheme: "light" | "dark" = (() => {
     if (customThemeName) {
-      const ct = findCustomTheme(customThemeName);
-      if (ct) return ct.base;
+      const customTheme = findCustomTheme(customThemeName);
+      if (customTheme) return customTheme.base;
     }
     return theme === "system" ? (snapshot.systemDark ? "dark" : "light") : theme;
   })();
 
   const setTheme = useCallback((next: Theme) => {
-    if (!hasThemeStorage()) return;
-    localStorage.setItem(STORAGE_KEY, next);
-    // Clear custom theme when switching to a standard theme
+    if (typeof window === "undefined") return;
+    try {
+      writeThemePreference(next);
+    } catch (cause) {
+      const error = isThemeStorageError(cause)
+        ? cause
+        : new ThemeStorageError({
+            operation: "write",
+            storageKey: STORAGE_KEY,
+            theme: next,
+            cause,
+          });
+      console.error(error.message, {
+        operation: error.operation,
+        storageKey: error.storageKey,
+        theme: next,
+        ...safeErrorLogAttributes(error),
+      });
+      return;
+    }
     setActiveCustomThemeName(null);
     applyTheme(next, true);
     emitChange();
   }, []);
 
-  const setCustomTheme = useCallback((name: string | null) => {
-    if (!hasThemeStorage()) return;
-    setActiveCustomThemeName(name);
-    if (name) {
-      const ct = findCustomTheme(name);
-      if (ct) {
-        // Store the base as the underlying theme
-        localStorage.setItem(STORAGE_KEY, ct.base);
+  const setCustomTheme = useCallback((next: string | null) => {
+    if (typeof window === "undefined") return;
+    setActiveCustomThemeName(next);
+    const customTheme = next ? findCustomTheme(next) : undefined;
+    if (customTheme) {
+      try {
+        writeThemePreference(customTheme.base);
+      } catch (cause) {
+        const error = isThemeStorageError(cause)
+          ? cause
+          : new ThemeStorageError({
+              operation: "write",
+              storageKey: STORAGE_KEY,
+              theme: customTheme.base,
+              cause,
+            });
+        console.error(error.message, {
+          operation: error.operation,
+          storageKey: error.storageKey,
+          theme: customTheme.base,
+          ...safeErrorLogAttributes(error),
+        });
       }
     }
+    lastAppliedTheme = null;
     applyTheme(getStored(), true);
     emitChange();
   }, []);
@@ -257,7 +398,7 @@ export function useTheme() {
   // Keep DOM in sync on mount/change
   useEffect(() => {
     applyTheme(theme);
-  }, [theme, customThemeName]);
+  }, [customThemeName, theme]);
 
   return { theme, setTheme, resolvedTheme, customThemeName, setCustomTheme } as const;
 }
