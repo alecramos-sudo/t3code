@@ -267,55 +267,127 @@ function mutedForeground(base: "light" | "dark", fg: string): string {
   return `#${toHex(mix(r))}${toHex(mix(g))}${toHex(mix(b))}`;
 }
 
+function getRootElement(): HTMLElement | null {
+  if (typeof document === "undefined") return null;
+  return document.documentElement ?? null;
+}
+
+function getRootStyle(): CSSStyleDeclaration | null {
+  return getRootElement()?.style ?? null;
+}
+
 /** Inject a custom theme's colors as CSS variables on :root */
 export function applyCustomThemeColors(
   colors: CustomThemeColors,
   base: "light" | "dark" = "dark",
 ): void {
-  const root = document.documentElement;
+  const root = getRootStyle();
+  if (!root) return;
+  getRootElement()?.setAttribute("data-custom-theme-active", "true");
   for (const key of CSS_VAR_KEYS) {
-    root.style.setProperty(`--${key}`, colors[key]);
+    root.setProperty(`--${key}`, colors[key]);
+    root.setProperty(`--custom-theme-${key}`, colors[key]);
     if (key === "card" || key === "popover") {
-      root.style.setProperty(`--${key}-foreground`, colors.foreground);
+      root.setProperty(`--${key}-foreground`, colors.foreground);
     }
   }
-  root.style.setProperty("--primary-foreground", contrastForeground(colors.primary));
-  root.style.setProperty("--secondary-foreground", colors.foreground);
-  root.style.setProperty("--muted-foreground", mutedForeground(base, colors.foreground));
-  root.style.setProperty("--accent-foreground", colors.foreground);
-  root.style.setProperty("--destructive-foreground", contrastForeground(colors.destructive));
-  root.style.setProperty("--info-foreground", contrastForeground(colors.info));
-  root.style.setProperty("--success-foreground", contrastForeground(colors.success));
-  root.style.setProperty("--warning-foreground", contrastForeground(colors.warning));
-  root.style.setProperty("--app-chrome-background", colors.background);
+  const primaryForeground = contrastForeground(colors.primary);
+  const secondaryForeground = contrastForeground(colors.secondary);
+  const mutedText = mutedForeground(base, colors.foreground);
+  const accentForeground = contrastForeground(colors.accent);
+  root.setProperty("--primary-foreground", primaryForeground);
+  root.setProperty("--secondary-foreground", secondaryForeground);
+  root.setProperty("--muted-foreground", mutedText);
+  root.setProperty("--accent-foreground", accentForeground);
+  root.setProperty("--destructive-foreground", contrastForeground(colors.destructive));
+  root.setProperty("--info-foreground", contrastForeground(colors.info));
+  root.setProperty("--success-foreground", contrastForeground(colors.success));
+  root.setProperty("--warning-foreground", contrastForeground(colors.warning));
+  root.setProperty("--app-chrome-background", colors.background);
+  root.setProperty("--custom-theme-primary-foreground", primaryForeground);
+  root.setProperty("--custom-theme-secondary-foreground", secondaryForeground);
+  root.setProperty("--custom-theme-muted-foreground", mutedText);
+  root.setProperty("--custom-theme-accent-foreground", accentForeground);
+  root.setProperty("--sidebar", colors.card);
+  root.setProperty("--sidebar-foreground", colors.foreground);
+  root.setProperty("--sidebar-muted-foreground", mutedText);
+  root.setProperty("--sidebar-control-surface", colors.secondary);
+  root.setProperty("--sidebar-row-hover", colors.secondary);
+  root.setProperty("--sidebar-row-active", colors.muted);
+  root.setProperty("--sidebar-row-selected", colors.secondary);
+  root.setProperty("--sidebar-border", colors.border);
+  root.setProperty("--sidebar-stage-fade", colors.card);
+  root.setProperty("--custom-theme-sidebar", colors.card);
+  root.setProperty("--custom-theme-sidebar-foreground", colors.foreground);
+  root.setProperty("--custom-theme-sidebar-muted-foreground", mutedText);
+  root.setProperty("--custom-theme-sidebar-control-surface", colors.secondary);
+  root.setProperty("--custom-theme-sidebar-row-hover", colors.secondary);
+  root.setProperty("--custom-theme-sidebar-row-active", colors.muted);
+  root.setProperty("--custom-theme-sidebar-row-selected", colors.secondary);
+  root.setProperty("--custom-theme-sidebar-border", colors.border);
+  root.setProperty("--custom-theme-sidebar-stage-fade", colors.card);
 }
 
 /** Remove all custom theme CSS variable overrides from :root */
 export function clearCustomThemeColors(): void {
-  const root = document.documentElement;
+  const root = getRootStyle();
+  if (!root) return;
+  getRootElement()?.removeAttribute("data-custom-theme-active");
   for (const key of CSS_VAR_KEYS) {
-    root.style.removeProperty(`--${key}`);
+    root.removeProperty(`--${key}`);
+    root.removeProperty(`--custom-theme-${key}`);
     if (key === "card" || key === "popover") {
-      root.style.removeProperty(`--${key}-foreground`);
+      root.removeProperty(`--${key}-foreground`);
     }
   }
-  root.style.removeProperty("--primary-foreground");
-  root.style.removeProperty("--secondary-foreground");
-  root.style.removeProperty("--muted-foreground");
-  root.style.removeProperty("--accent-foreground");
-  root.style.removeProperty("--destructive-foreground");
-  root.style.removeProperty("--info-foreground");
-  root.style.removeProperty("--success-foreground");
-  root.style.removeProperty("--warning-foreground");
-  root.style.removeProperty("--app-chrome-background");
+  root.removeProperty("--primary-foreground");
+  root.removeProperty("--secondary-foreground");
+  root.removeProperty("--muted-foreground");
+  root.removeProperty("--accent-foreground");
+  root.removeProperty("--destructive-foreground");
+  root.removeProperty("--info-foreground");
+  root.removeProperty("--success-foreground");
+  root.removeProperty("--warning-foreground");
+  root.removeProperty("--app-chrome-background");
+  root.removeProperty("--custom-theme-primary-foreground");
+  root.removeProperty("--custom-theme-secondary-foreground");
+  root.removeProperty("--custom-theme-muted-foreground");
+  root.removeProperty("--custom-theme-accent-foreground");
+  root.removeProperty("--sidebar");
+  root.removeProperty("--sidebar-foreground");
+  root.removeProperty("--sidebar-muted-foreground");
+  root.removeProperty("--sidebar-control-surface");
+  root.removeProperty("--sidebar-row-hover");
+  root.removeProperty("--sidebar-row-active");
+  root.removeProperty("--sidebar-row-selected");
+  root.removeProperty("--sidebar-border");
+  root.removeProperty("--sidebar-stage-fade");
+  root.removeProperty("--custom-theme-sidebar");
+  root.removeProperty("--custom-theme-sidebar-foreground");
+  root.removeProperty("--custom-theme-sidebar-muted-foreground");
+  root.removeProperty("--custom-theme-sidebar-control-surface");
+  root.removeProperty("--custom-theme-sidebar-row-hover");
+  root.removeProperty("--custom-theme-sidebar-row-active");
+  root.removeProperty("--custom-theme-sidebar-row-selected");
+  root.removeProperty("--custom-theme-sidebar-border");
+  root.removeProperty("--custom-theme-sidebar-stage-fade");
 }
 
 const CUSTOM_THEMES_STORAGE_KEY = "t3code:custom-themes";
 const ACTIVE_CUSTOM_THEME_KEY = "t3code:custom-theme-name";
 
+function getThemeStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function loadUserThemes(): CustomTheme[] {
   try {
-    const raw = localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY);
+    const raw = getThemeStorage()?.getItem(CUSTOM_THEMES_STORAGE_KEY);
     return raw ? (JSON.parse(raw) as CustomTheme[]) : [];
   } catch {
     return [];
@@ -323,17 +395,23 @@ export function loadUserThemes(): CustomTheme[] {
 }
 
 export function saveUserThemes(themes: CustomTheme[]): void {
-  localStorage.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(themes));
+  getThemeStorage()?.setItem(CUSTOM_THEMES_STORAGE_KEY, JSON.stringify(themes));
 }
 
 export function getActiveCustomThemeName(): string | null {
-  return localStorage.getItem(ACTIVE_CUSTOM_THEME_KEY);
+  try {
+    return getThemeStorage()?.getItem(ACTIVE_CUSTOM_THEME_KEY) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export function setActiveCustomThemeName(name: string | null): void {
+  const storage = getThemeStorage();
+  if (!storage) return;
   if (name) {
-    localStorage.setItem(ACTIVE_CUSTOM_THEME_KEY, name);
+    storage.setItem(ACTIVE_CUSTOM_THEME_KEY, name);
   } else {
-    localStorage.removeItem(ACTIVE_CUSTOM_THEME_KEY);
+    storage.removeItem(ACTIVE_CUSTOM_THEME_KEY);
   }
 }

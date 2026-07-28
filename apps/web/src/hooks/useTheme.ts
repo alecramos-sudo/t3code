@@ -142,6 +142,11 @@ function findCustomTheme(name: string): CustomTheme | undefined {
   );
 }
 
+function getStoredCustomThemeName(): string | null {
+  if (themeStorageReadFailure !== null) return null;
+  return getActiveCustomThemeName();
+}
+
 function ensureThemeColorMetaTag(): HTMLMetaElement {
   let element = document.querySelector<HTMLMetaElement>(DYNAMIC_THEME_COLOR_SELECTOR);
   if (element) {
@@ -194,7 +199,7 @@ export function syncBrowserChromeTheme() {
 function applyTheme(theme: Theme, suppressTransitions = false) {
   if (typeof document === "undefined" || typeof window === "undefined") return;
   const systemDark = theme === "system" ? getSystemDark() : false;
-  const customThemeName = getActiveCustomThemeName();
+  const customThemeName = getStoredCustomThemeName();
   if (
     lastAppliedTheme?.theme === theme &&
     lastAppliedTheme.systemDark === systemDark &&
@@ -279,7 +284,7 @@ function getSnapshot(): ThemeSnapshot {
   if (typeof window === "undefined") return DEFAULT_THEME_SNAPSHOT;
   const theme = getStored();
   const systemDark = theme === "system" ? getSystemDark() : false;
-  const customThemeName = getActiveCustomThemeName();
+  const customThemeName = getStoredCustomThemeName();
 
   if (
     lastSnapshot &&
