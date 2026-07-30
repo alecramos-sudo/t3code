@@ -59,6 +59,24 @@ it.effect("parses keybinding rules", () =>
     });
     assert.strictEqual(parsedCommandPalette.command, "commandPalette.toggle");
 
+    const parsedCommandPaletteAddProject = yield* decode(KeybindingRule, {
+      key: "mod+shift+p",
+      command: "commandPalette.addProject",
+    });
+    assert.strictEqual(parsedCommandPaletteAddProject.command, "commandPalette.addProject");
+
+    const parsedFilePicker = yield* decode(KeybindingRule, {
+      key: "mod+p",
+      command: "filePicker.toggle",
+    });
+    assert.strictEqual(parsedFilePicker.command, "filePicker.toggle");
+
+    const parsedProjectSearch = yield* decode(KeybindingRule, {
+      key: "mod+shift+f",
+      command: "projectSearch.toggle",
+    });
+    assert.strictEqual(parsedProjectSearch.command, "projectSearch.toggle");
+
     const parsedLocal = yield* decode(KeybindingRule, {
       key: "mod+shift+n",
       command: "chat.newLocal",
