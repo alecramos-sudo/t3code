@@ -142,6 +142,38 @@ function sha256(pathname: string) {
   return output("shasum", ["-a", "256", pathname]).split(/\s+/)[0] ?? "";
 }
 
+function assertMacDiskImageSignature(dmgPath: string) {
+  // oxlint-disable-next-line t3code/no-global-process-runtime -- Standalone release script has no Effect runtime.
+  if (NodeOS.platform() !== "darwin") {
+    throw new Error("macOS DMG signature verification must run on macOS.");
+  }
+
+  const mountDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-dmg-verify-"));
+  let attached = false;
+  try {
+    run("hdiutil", ["attach", "-readonly", "-nobrowse", "-mountpoint", mountDir, dmgPath]);
+    attached = true;
+
+    const appName = NodeFS.readdirSync(mountDir).find((entry) => entry.endsWith(".app"));
+    if (!appName) {
+      throw new Error(`No app bundle found in ${dmgPath}.`);
+    }
+
+    run("codesign", [
+      "--verify",
+      "--deep",
+      "--strict",
+      "--verbose=2",
+      NodePath.join(mountDir, appName),
+    ]);
+  } finally {
+    if (attached) {
+      run("hdiutil", ["detach", mountDir]);
+    }
+    NodeFS.rmSync(mountDir, { recursive: true, force: true });
+  }
+}
+
 function createRelease(options: Options, version: string) {
   const head = gitOutput(["rev-parse", "HEAD"]);
   const shortHead = gitOutput(["rev-parse", "--short=9", "HEAD"]);
@@ -170,6 +202,10 @@ function createRelease(options: Options, version: string) {
       "- Project expansion setting and settings-search anchor",
       "- commandPalette.addProject keybinding support",
       "- Claude Opus 4.7 provider support",
+      "",
+      "macOS signing:",
+      "- This community build is ad-hoc signed and is not Apple-notarized.",
+      "- On first launch, Control-click the app, choose Open, then confirm Open.",
       "",
       "SHA256:",
       `- DMG: ${sha256(dmg)}`,
@@ -245,6 +281,7 @@ function main() {
 
   const version = packageVersion();
   run("pnpm", ["run", `dist:desktop:dmg:${options.arch}`]);
+  assertMacDiskImageSignature(`release/T3-Code-${version}-${options.arch}.dmg`);
 
   git(["push", "origin", `HEAD:refs/heads/${branch}`]);
   if (!options.skipRelease) {

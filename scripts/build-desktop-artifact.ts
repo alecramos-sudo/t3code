@@ -1568,6 +1568,10 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
       target: target === "dmg" ? [target, "zip"] : [target],
       icon: "icon.icns",
       category: "public.app-category.developer-tools",
+      // A bare Electron bundle retains only its linker signature, which becomes
+      // invalid as soon as resources are packaged. Seal unsigned local builds
+      // with a complete ad-hoc signature so macOS does not report them as damaged.
+      ...(!signed ? { identity: "-" } : {}),
       protocols: [
         {
           name: "T3 Code",
